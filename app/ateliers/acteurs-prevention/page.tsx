@@ -11,7 +11,7 @@ export default function PreventionActorsWorkshop() {
 
       <section className="embedded-intro">
         <div>
-          <p className="eyebrow">Atelier 03 · Jeu interactif</p>
+          <p className="eyebrow">Atelier 02 · Jeu interactif</p>
           <h1>Les acteurs de la prévention</h1>
         </div>
         <div className="embedded-intro-copy">

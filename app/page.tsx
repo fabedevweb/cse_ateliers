@@ -1,24 +1,15 @@
 const workshops = [
   {
     number: '01',
-    type: 'Consultation · Psychologie',
-    title: 'Prévenir les risques psychosociaux',
-    description: 'Une association de 15 salariés crée une permanence pour intervenir lors de conflits entre équipes et auprès de dirigeants.',
-    meta: '35 à 45 min · Travail en groupe',
-    href: '/ateliers/consultation-psychologues',
+    type: '2 scénarios',
+    title: 'Avis à rendre après consultation',
+    description: 'Choisissez entre l’ordre des départs en congés payés et le reclassement d’un professeur de piano déclaré inapte.',
+    meta: 'Deux associations · Avis HTML',
+    href: '/ateliers/avis-duerp',
     accent: 'lime',
   },
   {
     number: '02',
-    type: 'Consultation · Musique',
-    title: 'Ouvrir une nouvelle salle de cours',
-    description: 'L’Atelier des Arts, 35 salariés, prépare l’ouverture d’une salle louée pour ses cours de piano et de musique.',
-    meta: '35 à 45 min · Travail en groupe',
-    href: '/ateliers/consultation-atelier-des-arts',
-    accent: 'warm',
-  },
-  {
-    number: '03',
     type: 'Jeu interactif',
     title: 'Les acteurs de la prévention',
     description: 'Identifiez les différents acteurs de la prévention grâce à un parcours « Qui est-ce ? » interactif.',
@@ -56,7 +47,7 @@ export default function Home() {
           <p>Chaque carte ouvre directement l’activité. De nouveaux ateliers pourront être ajoutés ici au fil de vos formations.</p>
         </div>
 
-        <div className="workshop-cards">
+        <div className="workshop-cards two-cards">
           {workshops.map((workshop) => (
             <a className={`workshop-card ${workshop.accent}`} href={workshop.href} key={workshop.number}>
               <div className="workshop-card-top">

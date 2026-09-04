@@ -99,6 +99,18 @@ button,input,textarea { font:inherit; }
 .legal-links { display:grid; gap:10px; margin:28px 0; }
 .legal-links a { color:var(--green); font-size:13px; font-weight:800; text-underline-offset:4px; }
 .legal-card .disclaimer { padding-top:20px; border-top:1px solid #cad7ce; font-size:12px; }
+.scenario-table-block { margin-top:32px; padding:clamp(25px,4vw,42px); border:1px solid var(--line); border-radius:7px; background:white; }
+.scenario-table-block h3,.proposal-box h3 { margin:0 0 22px; font-family:Georgia,serif; font-size:clamp(27px,3vw,36px); font-weight:400; }
+.scenario-table-wrap { overflow-x:auto; }
+.scenario-table { width:100%; min-width:760px; border-collapse:collapse; font-size:14px; line-height:1.5; }
+.scenario-table th { padding:13px 15px; background:var(--ink); color:white; text-align:left; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+.scenario-table td { padding:15px; border-bottom:1px solid var(--line); vertical-align:top; color:#40534c; }
+.scenario-table td:first-child { color:var(--ink); font-weight:800; }
+.scenario-table tbody tr:nth-child(even) { background:#f7f9f7; }
+.proposal-box { margin-top:24px; padding:clamp(28px,5vw,52px); border-radius:7px; background:#f3f7dc; }
+.proposal-box>p:not(.case-label) { max-width:900px; color:#40534c; line-height:1.7; }
+.proposal-box ol,.proposal-box ul { display:grid; gap:10px; max-width:950px; margin:22px 0 0; padding-left:24px; color:#31473f; line-height:1.6; }
+.proposal-box ol { font-weight:800; }
 
 .risks { background:white; }
 .risk-grid { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--line); border-left:1px solid var(--line); }
