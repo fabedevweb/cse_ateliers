@@ -65,6 +65,7 @@ button,input,textarea { font:inherit; }
 .button { display:inline-flex; gap:18px; align-items:center; justify-content:center; min-height:52px; padding:0 22px; border:0; border-radius:5px; font-weight:800; font-size:14px; text-decoration:none; cursor:pointer; }
 .button.primary { background:var(--lime); color:var(--ink); box-shadow:0 8px 24px rgba(0,0,0,.12); }
 .button.primary:hover { background:#ebfa87; transform:translateY(-1px); }
+.button:disabled { cursor:wait; opacity:.72; transform:none; }
 .hero-card { position:relative; z-index:1; padding:32px; background:#f7f9f5; color:var(--ink); border-radius:8px; box-shadow:18px 18px 0 rgba(223,241,106,.8); transform:rotate(1.5deg); }
 .card-topline { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
 .status-dot { color:var(--green); }

@@ -36,12 +36,10 @@ export type ConsultationScenario = {
   fileSlug: string;
 };
 
-const escapeHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
-const paragraph = (value: string) => escapeHtml(value || 'Non renseigné').replaceAll('\n', '<br>');
-
 export default function ConsultationWorkshop({ scenario }: { scenario: ConsultationScenario }) {
   const [form, setForm] = useState<FormState>({ company: scenario.association, meetingDate: '', electedMembers: '', opinion: '', information: '', findings: '', measures: '', reservations: '', followUp: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const completed = useMemo(() => {
     const checks = [form.meetingDate, form.electedMembers, form.opinion, form.information, form.findings, form.measures];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
@@ -52,31 +50,107 @@ export default function ConsultationWorkshop({ scenario }: { scenario: Consultat
     setSubmitted(false);
   };
 
-  const downloadOpinion = (event: FormEvent) => {
+  const downloadOpinion = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitted(true);
     if (!form.opinion) return;
 
-    const opinionLabel = form.opinion === 'favorable' ? 'FAVORABLE' : 'DÉFAVORABLE';
-    const accent = form.opinion === 'favorable' ? '#167b5b' : '#b43c32';
-    const dateLabel = form.meetingDate ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(`${form.meetingDate}T12:00:00`)) : 'Non renseignée';
-    const html = `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Avis du CSE — ${escapeHtml(form.company)}</title>
-<style>body{font-family:Arial,sans-serif;color:#17211d;max-width:820px;margin:0 auto;padding:48px 34px;line-height:1.55}header{border-bottom:3px solid ${accent};padding-bottom:24px;margin-bottom:32px}.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#68736e}h1{font-size:32px;margin:8px 0}h2{font-size:18px;margin-top:30px}.decision{display:inline-block;border:2px solid ${accent};color:${accent};padding:10px 16px;font-weight:700;border-radius:8px}.meta{background:#f2f5f3;padding:16px 20px;border-radius:8px}footer{margin-top:48px;padding-top:20px;border-top:1px solid #ccd3cf;font-size:12px;color:#68736e}@media print{body{padding:0}}</style>
-</head><body><header><p class="eyebrow">Exercice pédagogique · CSE de moins de 50 salariés</p><h1>Avis du comité social et économique</h1><p>${escapeHtml(scenario.subject)}</p></header>
-<div class="meta"><strong>Association :</strong> ${escapeHtml(form.company)}<br><strong>Activité :</strong> ${escapeHtml(scenario.activity)}<br><strong>Date de la réunion :</strong> ${escapeHtml(dateLabel)}<br><strong>Élus ayant participé :</strong> ${paragraph(form.electedMembers)}</div>
-<h2>Décision du CSE</h2><p class="decision">AVIS ${opinionLabel}</p><h2>Qualité des informations reçues</h2><p>${paragraph(form.information)}</p><h2>Constats et analyse</h2><p>${paragraph(form.findings)}</p><h2>Demandes et préconisations du CSE</h2><p>${paragraph(form.measures)}</p><h2>Réserves éventuelles</h2><p>${paragraph(form.reservations)}</p><h2>Modalités de suivi</h2><p>${paragraph(form.followUp)}</p>
-<footer>Document produit dans le cadre d’un cas fictif de formation. Il ne constitue pas un conseil juridique. Base pédagogique : ${escapeHtml(scenario.legalBasis)}.</footer></body></html>`;
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `avis-cse-${scenario.fileSlug}.html`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    setIsGenerating(true);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const document = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageWidth = document.internal.pageSize.getWidth();
+      const pageHeight = document.internal.pageSize.getHeight();
+      const margin = 18;
+      const textWidth = pageWidth - margin * 2;
+      const bottomLimit = pageHeight - 20;
+      const opinionLabel = form.opinion === 'favorable' ? 'FAVORABLE' : 'DÉFAVORABLE';
+      const accent: [number, number, number] = form.opinion === 'favorable' ? [22, 123, 91] : [180, 60, 50];
+      const dateLabel = form.meetingDate ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(`${form.meetingDate}T12:00:00`)) : 'Non renseignée';
+      let y = 20;
+
+      const ensureSpace = (height: number) => {
+        if (y + height <= bottomLimit) return;
+        document.addPage();
+        y = 20;
+      };
+
+      const addSection = (title: string, content: string) => {
+        const value = content.trim() || 'Non renseigné';
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(10.5);
+        const lines = document.splitTextToSize(value, textWidth) as string[];
+        const sectionHeight = 13 + lines.length * 5.2;
+        ensureSpace(sectionHeight);
+        document.setTextColor(22, 52, 43);
+        document.setFont('helvetica', 'bold');
+        document.setFontSize(12.5);
+        document.text(title, margin, y);
+        y += 7;
+        document.setTextColor(64, 83, 76);
+        document.setFont('helvetica', 'normal');
+        document.setFontSize(10.5);
+        document.text(lines, margin, y);
+        y += lines.length * 5.2 + 7;
+      };
+
+      document.setFillColor(15, 82, 61);
+      document.rect(0, 0, pageWidth, 48, 'F');
+      document.setTextColor(223, 241, 106);
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(9);
+      document.text('EXERCICE PÉDAGOGIQUE · CSE DE MOINS DE 50 SALARIÉS', margin, 15);
+      document.setTextColor(255, 255, 255);
+      document.setFontSize(22);
+      document.text('Avis du comité social et économique', margin, 27);
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(10.5);
+      document.text(document.splitTextToSize(scenario.subject, textWidth), margin, 36);
+      y = 58;
+
+      document.setFillColor(242, 245, 243);
+      document.roundedRect(margin, y, textWidth, 39, 2, 2, 'F');
+      document.setTextColor(22, 52, 43);
+      document.setFontSize(10);
+      document.setFont('helvetica', 'bold');
+      document.text('Association :', margin + 5, y + 8);
+      document.text('Date de la réunion :', margin + 5, y + 17);
+      document.text('Élus ayant participé :', margin + 5, y + 26);
+      document.setFont('helvetica', 'normal');
+      document.text(form.company || 'Non renseignée', margin + 34, y + 8);
+      document.text(dateLabel, margin + 45, y + 17);
+      document.text(document.splitTextToSize(form.electedMembers || 'Non renseigné', textWidth - 49).slice(0, 2), margin + 49, y + 26);
+      y += 50;
+
+      document.setDrawColor(...accent);
+      document.setTextColor(...accent);
+      document.setLineWidth(0.7);
+      document.roundedRect(margin, y, 58, 14, 2, 2, 'S');
+      document.setFont('helvetica', 'bold');
+      document.setFontSize(12);
+      document.text(`AVIS ${opinionLabel}`, margin + 5, y + 9);
+      y += 25;
+
+      addSection('Qualité des informations reçues', form.information);
+      addSection('Constats et analyse', form.findings);
+      addSection('Demandes et préconisations du CSE', form.measures);
+      addSection('Réserves éventuelles', form.reservations);
+      addSection('Modalités de suivi', form.followUp);
+
+      const footerLines = document.splitTextToSize(`Document produit dans le cadre d’un cas fictif de formation. Il ne constitue pas un conseil juridique. Base pédagogique : ${scenario.legalBasis}.`, textWidth) as string[];
+      ensureSpace(footerLines.length * 4.2 + 10);
+      document.setDrawColor(204, 211, 207);
+      document.line(margin, y, pageWidth - margin, y);
+      y += 6;
+      document.setTextColor(104, 115, 110);
+      document.setFont('helvetica', 'normal');
+      document.setFontSize(8);
+      document.text(footerLines, margin, y);
+
+      document.save(`avis-cse-${scenario.fileSlug}.pdf`);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -147,7 +221,7 @@ export default function ConsultationWorkshop({ scenario }: { scenario: Consultat
             <label>{scenario.formPrompts.measuresLabel}<textarea rows={4} value={form.measures} onChange={(e) => update('measures', e.target.value)} placeholder={scenario.formPrompts.measuresPlaceholder} required /></label>
             <div className="form-grid"><label>Réserves éventuelles<textarea rows={3} value={form.reservations} onChange={(e) => update('reservations', e.target.value)} placeholder="Facultatif" /></label><label>Suivi proposé<textarea rows={3} value={form.followUp} onChange={(e) => update('followUp', e.target.value)} placeholder="Ex. : point de suivi lors de la prochaine réunion" /></label></div>
           </fieldset>
-          <div className="download-panel"><div><p className="eyebrow">Dernière étape</p><h3>Télécharger l’avis au format HTML</h3><p>Le fichier s’ouvre dans tout navigateur et peut ensuite être imprimé ou enregistré en PDF.</p></div><button className="button primary" type="submit">Télécharger mon avis <span aria-hidden="true">↓</span></button></div>
+          <div className="download-panel"><div><p className="eyebrow">Dernière étape</p><h3>Télécharger l’avis au format PDF</h3><p>Un document PDF prêt à imprimer est créé directement à partir de vos réponses.</p></div><button className="button primary" type="submit" disabled={isGenerating}>{isGenerating ? 'Création du PDF…' : 'Télécharger mon avis en PDF'} <span aria-hidden="true">↓</span></button></div>
         </form>
       </section>
 
