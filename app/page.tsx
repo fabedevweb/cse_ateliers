@@ -4,7 +4,7 @@ const workshops = [
     type: '2 scénarios',
     title: 'Avis à rendre après consultation',
     description: 'Choisissez entre l’ordre des départs en congés payés et le reclassement d’un professeur de piano déclaré inapte.',
-    meta: 'Deux associations · Avis HTML',
+    meta: 'Deux associations · Avis PDF',
     href: '/ateliers/avis-duerp',
     accent: 'lime',
   },
@@ -16,6 +16,15 @@ const workshops = [
     meta: 'Parcours Genially · En équipe',
     href: '/ateliers/acteurs-prevention',
     accent: 'blue',
+  },
+  {
+    number: '03',
+    type: 'Escape game interactif',
+    title: 'RPS',
+    description: 'Explorez les risques psychosociaux à travers un escape game interactif à utiliser pendant vos formations.',
+    meta: 'Parcours Genially · En équipe',
+    href: '/ateliers/rps',
+    accent: 'warm',
   },
 ];
 
@@ -47,7 +56,7 @@ export default function Home() {
           <p>Chaque carte ouvre directement l’activité. De nouveaux ateliers pourront être ajoutés ici au fil de vos formations.</p>
         </div>
 
-        <div className="workshop-cards two-cards">
+        <div className="workshop-cards">
           {workshops.map((workshop) => (
             <a className={`workshop-card ${workshop.accent}`} href={workshop.href} key={workshop.number}>
               <div className="workshop-card-top">
