@@ -1,15 +1,24 @@
 const workshops = [
   {
     number: '01',
-    type: 'Cas pratique',
-    title: 'Rendre un avis sur le DUERP',
-    description: 'Analysez un dossier fictif, choisissez le sens de l’avis et téléchargez une délibération complète au format HTML.',
+    type: 'Consultation · Psychologie',
+    title: 'Prévenir les risques psychosociaux',
+    description: 'Une association de 15 salariés crée une permanence pour intervenir lors de conflits entre équipes et auprès de dirigeants.',
     meta: '35 à 45 min · Travail en groupe',
-    href: '/ateliers/avis-duerp',
+    href: '/ateliers/consultation-psychologues',
     accent: 'lime',
   },
   {
     number: '02',
+    type: 'Consultation · Musique',
+    title: 'Ouvrir une nouvelle salle de cours',
+    description: 'L’Atelier des Arts, 35 salariés, prépare l’ouverture d’une salle louée pour ses cours de piano et de musique.',
+    meta: '35 à 45 min · Travail en groupe',
+    href: '/ateliers/consultation-atelier-des-arts',
+    accent: 'warm',
+  },
+  {
+    number: '03',
     type: 'Jeu interactif',
     title: 'Les acteurs de la prévention',
     description: 'Identifiez les différents acteurs de la prévention grâce à un parcours « Qui est-ce ? » interactif.',

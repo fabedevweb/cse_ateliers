@@ -22,14 +22,17 @@ button,input,textarea { font:inherit; }
 .home-hero .eyebrow { color:var(--lime); }
 .home-hero h1 { margin:0; max-width:850px; font-family:Georgia,'Times New Roman',serif; font-size:clamp(48px,6.5vw,88px); font-weight:400; line-height:.98; letter-spacing:-.04em; }
 .home-intro { max-width:460px; margin:0 0 8px; color:#d7e4df; font-size:clamp(17px,1.8vw,20px); line-height:1.65; }
+.compact-hero { min-height:360px; }
 .workshop-library { padding:clamp(74px,9vw,120px) clamp(22px,7vw,110px); }
 .library-heading { display:grid; grid-template-columns:1fr minmax(280px,430px); align-items:end; gap:40px; margin-bottom:48px; }
 .library-heading h2 { margin:0; font-family:Georgia,serif; font-size:clamp(38px,4.5vw,60px); font-weight:400; line-height:1.05; letter-spacing:-.025em; }
 .library-heading>p { margin:0; color:var(--muted); font-size:14px; line-height:1.65; }
-.workshop-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+.workshop-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:24px; }
+.workshop-cards.two-cards { max-width:1040px; grid-template-columns:repeat(2,minmax(0,1fr)); }
 .workshop-card { min-height:390px; padding:30px; display:flex; flex-direction:column; justify-content:space-between; overflow:hidden; position:relative; border:1px solid var(--line); border-radius:8px; background:white; text-decoration:none; transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease; }
 .workshop-card::after { content:''; position:absolute; right:-75px; top:-85px; width:210px; height:210px; border-radius:50%; background:var(--soft); transition:transform .25s ease; }
 .workshop-card.lime::after { background:#eff8b9; }
+.workshop-card.warm::after { background:#f6e5cc; }
 .workshop-card.blue::after { background:#dceff2; }
 .workshop-card:hover { transform:translateY(-5px); border-color:#b8c9bf; box-shadow:0 18px 44px rgba(22,52,43,.10); }
 .workshop-card:hover::after { transform:scale(1.08); }
@@ -139,6 +142,7 @@ input:focus,textarea:focus { border-color:var(--green); box-shadow:0 0 0 3px rgb
 .footer { min-height:150px; padding:44px clamp(22px,7vw,110px); display:flex; align-items:center; justify-content:space-between; gap:30px; border-top:1px solid var(--line); background:white; }
 .footer p,.footer>a { color:var(--muted); font-size:13px; }
 
-@media (max-width:850px) { .home-hero,.library-heading,.embedded-intro{grid-template-columns:1fr}.workshop-cards{grid-template-columns:1fr}.hero{grid-template-columns:1fr;padding-top:80px}.hero-card{max-width:480px}.scenario-grid,.risk-grid{grid-template-columns:1fr}.section-heading,.workshop-header{align-items:start;flex-direction:column}.progress{width:100%;text-align:left}.risk-grid{border-left:0}.risk-card{min-height:190px;border-left:1px solid var(--line)} }
+@media (max-width:1100px) { .workshop-cards{grid-template-columns:repeat(2,minmax(0,1fr))} }
+@media (max-width:850px) { .home-hero,.library-heading,.embedded-intro{grid-template-columns:1fr}.workshop-cards,.workshop-cards.two-cards{grid-template-columns:1fr}.hero{grid-template-columns:1fr;padding-top:80px}.hero-card{max-width:480px}.scenario-grid,.risk-grid{grid-template-columns:1fr}.section-heading,.workshop-header{align-items:start;flex-direction:column}.progress{width:100%;text-align:left}.risk-grid{border-left:0}.risk-card{min-height:190px;border-left:1px solid var(--line)} }
 @media (max-width:620px) { .header-link{display:none}.home-hero{min-height:390px}.home-hero h1{font-size:47px}.workshop-card{min-height:350px;padding:24px}.embedded-intro{padding-top:48px}.genially-section{padding-left:0;padding-right:0}.genially-frame{min-height:520px;border-radius:0}.hero{min-height:auto;padding-bottom:90px}.hero h1{font-size:46px}.hero-card{box-shadow:10px 10px 0 rgba(223,241,106,.8)}.section{padding-top:74px;padding-bottom:74px}.fact-grid,.form-grid,.opinion-grid{grid-template-columns:1fr}.prompt-box{grid-template-columns:1fr;gap:10px}.download-panel,.footer{align-items:stretch;flex-direction:column}.download-panel .button{width:100%} }
 @media (prefers-reduced-motion:reduce) { html{scroll-behavior:auto}*{transition:none!important}.page-loader-spinner{animation:none;border-color:rgba(223,241,106,.35);border-top-color:var(--lime)} }
