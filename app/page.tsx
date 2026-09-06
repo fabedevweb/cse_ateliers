@@ -26,6 +26,15 @@ const workshops = [
     href: '/ateliers/rps',
     accent: 'warm',
   },
+  {
+    number: '04',
+    type: 'Outil guidé · 2027',
+    title: 'Préparer une inspection',
+    description: 'Planifiez votre prochaine inspection, consignez les observations du terrain et produisez un rapport professionnel pour la direction.',
+    meta: 'Avant · Pendant · Après · Rapport PDF',
+    href: '/ateliers/inspection',
+    accent: 'inspection',
+  },
 ];
 
 export default function Home() {
@@ -56,7 +65,7 @@ export default function Home() {
           <p>Chaque carte ouvre directement l’activité. De nouveaux ateliers pourront être ajoutés ici au fil de vos formations.</p>
         </div>
 
-        <div className="workshop-cards">
+        <div className="workshop-cards four-cards">
           {workshops.map((workshop) => (
             <a className={`workshop-card ${workshop.accent}`} href={workshop.href} key={workshop.number}>
               <div className="workshop-card-top">
