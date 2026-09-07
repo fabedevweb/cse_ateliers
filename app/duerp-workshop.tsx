@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type WorkshopMeta = { unit: string; job: string };
 
@@ -17,6 +17,7 @@ type RiskDraft = {
   gravity: string;
   gravityArgument: string;
   measures: string;
+  noMeasuresDeclared: boolean;
 };
 
 type RiskRecord = RiskDraft & {
@@ -51,7 +52,7 @@ const initialMeta: WorkshopMeta = { unit: '', job: '' };
 const initialDraft: RiskDraft = {
   activity: '', source: 'Analyse CSE', nature: 'Nouveau risque proposé par le CSE', family: '',
   analysisElements: '', danger: '', fearedEvent: '', probability: '', probabilityArgument: '', gravity: '',
-  gravityArgument: '', measures: '',
+  gravityArgument: '', measures: '', noMeasuresDeclared: false,
 };
 
 const riskFamilies = [
@@ -85,7 +86,7 @@ const riskQuestions = [
   { title: 'Rassembler les éléments', prompt: 'Quels faits, observations ou échanges permettent d’étayer cette analyse ?', field: 'analysisElements' },
   { title: 'Repérer le danger', prompt: 'Quelle est la source possible du dommage ou la situation dangereuse ?', field: 'danger' },
   { title: 'Anticiper le dommage', prompt: 'Quel évènement redouté pourrait se produire ?', field: 'fearedEvent' },
-  { title: 'Coter la probabilité', prompt: 'À quelle fréquence ce dommage peut-il survenir ?', field: 'probability' },
+  { title: 'Coter la fréquence', prompt: 'À quelle fréquence ce dommage peut-il survenir ?', field: 'probability' },
   { title: 'Coter la gravité', prompt: 'Quelle serait la gravité du dommage ?', field: 'gravity' },
   { title: 'Évaluer la maîtrise', prompt: 'Quelles mesures de prévention sont déjà réellement en place ?', field: 'measures' },
 ] as const;
@@ -106,12 +107,12 @@ const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? c
 const splitMeasures = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
 const masteryFromMeasures = (value: string) => {
   const count = splitMeasures(value).length;
-  if (count === 0) return 1;
-  if (count < 3) return 0.75;
-  if (count < 5) return 0.5;
+  if (count <= 1) return 1;
+  if (count === 2) return 0.75;
+  if (count === 3) return 0.5;
   return 0.25;
 };
-const masteryLabel = (value: number) => value === 1 ? 'Aucune maîtrise' : value === 0.75 ? 'Maîtrise faible' : value === 0.5 ? 'Maîtrise partielle' : 'Maîtrise forte';
+const masteryLabel = (value: number) => value === 1 ? 'Maîtrise nulle ou insuffisante' : value === 0.75 ? 'Maîtrise faible' : value === 0.5 ? 'Maîtrise partielle' : 'Maîtrise forte';
 const roundOne = (value: number) => Math.round(value * 10) / 10;
 const levelFor = (score: number) => score <= 1 ? 'Faible' : score <= 3 ? 'Modéré' : score <= 8 ? 'Élevé' : 'Critique';
 const levelClass = (score: number) => score <= 1 ? 'low' : score <= 3 ? 'medium' : score <= 8 ? 'high' : 'critical';
@@ -136,6 +137,8 @@ export default function DuerpWorkshop() {
   const [savedLabel, setSavedLabel] = useState('Sauvegarde locale active');
   const [message, setMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [measureInput, setMeasureInput] = useState('');
+  const measureInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -193,10 +196,32 @@ export default function DuerpWorkshop() {
   const retainedPrinciples = principles.filter((principle) => planDraft.principles[principle.id]?.decision === 'retained');
 
   const updateDraft = <K extends keyof RiskDraft>(field: K, value: RiskDraft[K]) => setDraft((current) => ({ ...current, [field]: value }));
+  const addMeasure = () => {
+    const measure = (measureInputRef.current?.value || measureInput).trim();
+    if (!measure) {
+      setMessage('Décrivez la mesure existante avant de l’ajouter.');
+      return;
+    }
+    const measures = [...splitMeasures(draft.measures), measure];
+    setDraft((current) => ({ ...current, measures: measures.join('\n'), noMeasuresDeclared: false }));
+    setMeasureInput('');
+    setMessage(`Mesure ajoutée. La maîtrise est maintenant cotée à ${formatNumber(masteryFromMeasures(measures.join('\n')))}.`);
+  };
+  const removeMeasure = (index: number) => {
+    const measures = splitMeasures(draft.measures).filter((_, itemIndex) => itemIndex !== index);
+    setDraft((current) => ({ ...current, measures: measures.join('\n'), noMeasuresDeclared: false }));
+    setMessage('La mesure a été retirée et la cotation a été recalculée.');
+  };
+  const declareNoMeasures = () => {
+    setDraft((current) => ({ ...current, measures: '', noMeasuresDeclared: true }));
+    setMeasureInput('');
+    setMessage('Aucune mesure existante déclarée : le coefficient de maîtrise est égal à 1.');
+  };
   const showTop = () => document.querySelector('.duerp-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const currentRiskQuestionIsComplete = () => {
     const field = riskQuestions[riskQuestion].field;
-    if (['analysisElements', 'measures'].includes(field)) return true;
+    if (field === 'analysisElements') return true;
+    if (field === 'measures') return splitMeasures(draft.measures).length > 0 || draft.noMeasuresDeclared;
     return Boolean(String(draft[field]).trim());
   };
 
@@ -233,6 +258,7 @@ export default function DuerpWorkshop() {
     const { id, riskNo: _riskNo, unit, job, brut: _brut, mastery: _mastery, residual: _residual, ...values } = risk;
     setMeta({ unit, job });
     setDraft(values);
+    setMeasureInput('');
     setEditingId(id);
     setRiskQuestion(0);
     setStep(2);
@@ -252,6 +278,7 @@ export default function DuerpWorkshop() {
 
   const newRisk = () => {
     setDraft(initialDraft);
+    setMeasureInput('');
     setEditingId('');
     setRiskQuestion(0);
     setStep(2);
@@ -351,7 +378,7 @@ export default function DuerpWorkshop() {
       section('Cadre de l’exercice');
       field('Unité de travail', meta.unit);
       field('Métier', meta.job);
-      field('Méthode de cotation', 'Risque brut = probabilité × gravité. Risque résiduel = risque brut × niveau de maîtrise déterminé à partir des mesures de prévention existantes.');
+      field('Méthode de cotation', 'Risque brut = fréquence × gravité. Chaque mesure existante est renseignée séparément. Le nombre de mesures détermine le coefficient de maîtrise : 0 ou 1 = 1 ; 2 = 0,75 ; 3 = 0,5 ; 4 ou plus = 0,25. Risque résiduel = risque brut × coefficient de maîtrise.');
 
       risks.forEach((risk) => {
         nextPage();
@@ -368,7 +395,7 @@ export default function DuerpWorkshop() {
         field('Éléments d’analyse', risk.analysisElements);
         field('Danger / situation dangereuse', risk.danger);
         field('Évènement redouté', risk.fearedEvent);
-        field('Probabilité', `${risk.probability}/4 — ${risk.probabilityArgument || 'Justification non renseignée'}`);
+        field('Fréquence', `${risk.probability}/4 — ${risk.probabilityArgument || 'Justification non renseignée'}`);
         field('Gravité', `${risk.gravity}/4 — ${risk.gravityArgument || 'Justification non renseignée'}`);
         field('Risque brut', formatNumber(risk.brut));
         field('Mesures de prévention en place', splitMeasures(risk.measures).join(' · ') || 'Aucune mesure déclarée');
@@ -411,7 +438,7 @@ export default function DuerpWorkshop() {
     return <section className="duerp-live-board" aria-label="Tableau DUERP en construction">
       <div className="duerp-live-board-head"><div><span>Votre document en construction</span><h2>Tableau DUERP</h2></div><p>Faites défiler horizontalement pour suivre toutes les colonnes.</p></div>
       <div className="duerp-table-scroll"><table className="duerp-data-table">
-        <thead><tr><th>N°</th><th>Unité</th><th>Métier</th><th>Situation de travail réelle</th><th>Origine</th><th>Nature de la proposition</th><th>Nature du risque</th><th>Élément d’analyse</th><th>Danger / situation dangereuse</th><th>Évènement redouté</th><th>Probabilité</th><th>Gravité</th><th>Risque brut</th><th>Mesures de prévention en place</th><th>Maîtrise du risque</th><th>Risque résiduel</th>{!showDraft ? <th>Actions</th> : null}</tr></thead>
+        <thead><tr><th>N°</th><th>Unité</th><th>Métier</th><th>Situation de travail réelle</th><th>Origine</th><th>Nature de la proposition</th><th>Nature du risque</th><th>Élément d’analyse</th><th>Danger / situation dangereuse</th><th>Évènement redouté</th><th>Fréquence</th><th>Gravité</th><th>Risque brut</th><th>Mesures actuellement en place</th><th>Coefficient de maîtrise</th><th>Risque résiduel</th>{!showDraft ? <th>Actions</th> : null}</tr></thead>
         <tbody>{rows.length ? rows.map((risk) => {
           const isDraft = risk.id === 'draft' || risk.id === editingId;
           return <tr key={risk.id} className={isDraft && showDraft ? 'is-draft' : ''}>
@@ -448,9 +475,24 @@ export default function DuerpWorkshop() {
       case 'analysisElements': return <label>Éléments recueillis<textarea rows={5} value={draft.analysisElements} onChange={(event) => updateDraft('analysisElements', event.target.value)} placeholder="Faits observés, incidents, retours, documents ou données disponibles…" /></label>;
       case 'danger': return <label>Danger ou situation dangereuse<textarea rows={5} value={draft.danger} onChange={(event) => updateDraft('danger', event.target.value)} placeholder="Décrivez la source du dommage, l’exposition ou l’écart entre travail prescrit et travail réel." /></label>;
       case 'fearedEvent': return <label>Évènement redouté<input value={draft.fearedEvent} onChange={(event) => updateDraft('fearedEvent', event.target.value)} placeholder="Ex. chute, heurt, exposition, agression, épuisement…" /></label>;
-      case 'probability': return <div className="duerp-answer-stack"><label>Probabilité / fréquence<select value={draft.probability} onChange={(event) => updateDraft('probability', event.target.value)}><option value="">Choisir une cotation</option>{probabilityOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Pourquoi retenez-vous cette probabilité ?<textarea rows={4} value={draft.probabilityArgument} onChange={(event) => updateDraft('probabilityArgument', event.target.value)} placeholder="Fréquence d’exposition, incidents connus, situations répétées…" /></label></div>;
-      case 'gravity': return <div className="duerp-answer-stack"><label>Gravité du dommage<select value={draft.gravity} onChange={(event) => updateDraft('gravity', event.target.value)}><option value="">Choisir une cotation</option>{gravityOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Pourquoi retenez-vous cette gravité ?<textarea rows={4} value={draft.gravityArgument} onChange={(event) => updateDraft('gravityArgument', event.target.value)} placeholder="Nature, durée et réversibilité des dommages possibles…" /></label>{score.brut ? <div className={`duerp-calculation ${levelClass(score.brut)}`}><span>Risque brut</span><strong>{formatNumber(score.brut)}</strong><small>Probabilité {draft.probability} × gravité {draft.gravity}</small></div> : null}</div>;
-      case 'measures': return <div className="duerp-answer-stack"><label>Mesures de prévention existantes<textarea rows={7} value={draft.measures} onChange={(event) => updateDraft('measures', event.target.value)} placeholder={'Saisissez une mesure réellement en place par ligne.\nEx. Aspiration à la source\nRotation organisée\nFormation réalisée'} /></label><div className="duerp-mastery-result"><div><span>{splitMeasures(draft.measures).length} mesure{splitMeasures(draft.measures).length > 1 ? 's' : ''} en place</span><strong>{masteryLabel(score.mastery)}</strong><small>Coefficient {formatNumber(score.mastery)}</small></div><div><span>Risque résiduel</span><strong>{score.residual ? formatNumber(score.residual) : '—'}</strong><small>{score.residual ? levelFor(score.residual) : 'Cotation incomplète'}</small></div></div><p className="duerp-method-note">Méthode Tatwin : aucune mesure = 1 ; une à deux mesures = 0,75 ; trois à quatre = 0,5 ; cinq ou plus = 0,25.</p></div>;
+      case 'probability': return <div className="duerp-answer-stack"><label>Niveau de fréquence du risque<select value={draft.probability} onChange={(event) => updateDraft('probability', event.target.value)}><option value="">Choisir une cotation</option>{probabilityOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Pourquoi retenez-vous cette fréquence ?<textarea rows={4} value={draft.probabilityArgument} onChange={(event) => updateDraft('probabilityArgument', event.target.value)} placeholder="Fréquence d’exposition, incidents connus, situations répétées…" /></label></div>;
+      case 'gravity': return <div className="duerp-answer-stack"><label>Niveau de gravité du risque<select value={draft.gravity} onChange={(event) => updateDraft('gravity', event.target.value)}><option value="">Choisir une cotation</option>{gravityOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Pourquoi retenez-vous cette gravité ?<textarea rows={4} value={draft.gravityArgument} onChange={(event) => updateDraft('gravityArgument', event.target.value)} placeholder="Nature, durée et réversibilité des dommages possibles…" /></label>{score.brut ? <div className={`duerp-calculation ${levelClass(score.brut)}`}><span>Risque brut obtenu</span><strong>{formatNumber(score.brut)}</strong><small>Fréquence {draft.probability} × gravité {draft.gravity} = {formatNumber(score.brut)}</small></div> : null}</div>;
+      case 'measures': {
+        const measures = splitMeasures(draft.measures);
+        return <div className="duerp-answer-stack">
+          <div className="duerp-score-reminder"><span>Risque brut déjà calculé</span><strong>{formatNumber(score.brut)}</strong><small>Fréquence {draft.probability} × gravité {draft.gravity}</small></div>
+          <div className="duerp-measure-entry"><label>Mesure de prévention actuellement en place<input ref={measureInputRef} value={measureInput} onChange={(event) => setMeasureInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addMeasure(); } }} placeholder="Ex. aspiration à la source" /></label><button className="button duerp-add-measure" type="button" onClick={addMeasure}>Ajouter cette mesure</button></div>
+          <button className="text-button duerp-no-measure" type="button" onClick={declareNoMeasures}>Aucune mesure n’est actuellement en place</button>
+          <div className={`duerp-measure-list ${draft.noMeasuresDeclared ? 'declared-none' : ''}`}>
+            {measures.length ? measures.map((measure, index) => <div key={`${measure}-${index}`}><span><small>Mesure {index + 1}</small><strong>{measure}</strong></span><button type="button" onClick={() => removeMeasure(index)} aria-label={`Retirer la mesure ${index + 1}`}>Retirer</button></div>) : <p>{draft.noMeasuresDeclared ? 'Vous avez confirmé qu’aucune mesure de prévention n’est actuellement en place.' : 'Ajoutez chaque mesure séparément pour calculer la maîtrise.'}</p>}
+          </div>
+          <div className="duerp-mastery-scale" aria-label="Barème du niveau de maîtrise">
+            {[['0 ou 1 mesure', 1], ['2 mesures', 0.75], ['3 mesures', 0.5], ['4 mesures ou plus', 0.25]].map(([label, coefficient]) => <div key={String(label)} className={score.mastery === coefficient ? 'active' : ''}><span>{label}</span><strong>{String(coefficient).replace('.', ',')}</strong></div>)}
+          </div>
+          <div className="duerp-mastery-result"><div><span>{measures.length} mesure{measures.length > 1 ? 's' : ''} en place</span><strong>{masteryLabel(score.mastery)}</strong><small>Coefficient de maîtrise : {formatNumber(score.mastery)}</small></div><div><span>Risque résiduel</span><strong>{score.residual ? formatNumber(score.residual) : '—'}</strong><small>{score.brut ? `${formatNumber(score.brut)} × ${formatNumber(score.mastery)} = ${formatNumber(score.residual)}` : 'Cotation incomplète'}</small></div></div>
+          <p className="duerp-method-note">Calcul automatique : risque résiduel = risque brut × coefficient de maîtrise.</p>
+        </div>;
+      }
     }
   };
 
