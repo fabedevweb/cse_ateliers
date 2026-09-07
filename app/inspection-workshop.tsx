@@ -3,22 +3,26 @@
 import { useEffect, useMemo, useState } from 'react';
 
 type RiskLevel = 'Faible' | 'À surveiller' | 'Prioritaire' | 'Urgent';
+type TeamMember = {
+  id: string;
+  name: string;
+  role: string;
+};
+
 type InspectionData = {
-  association: string;
-  workforce: string;
-  site: string;
+  workUnit: string;
+  job: string;
   inspectionDate: string;
   startTime: string;
   endTime: string;
   objective: string;
-  team: string;
-  roles: string;
+  teamMembers: TeamMember[];
   activities: string;
   employees: string;
-  documents: string[];
-  equipment: string[];
   themes: string[];
   preparationNotes: string;
+  preparationValidated: boolean;
+  inspectionValidated: boolean;
   duerpFollowUp: string;
   reportRecipients: string;
   nextReviewDate: string;
@@ -39,19 +43,21 @@ type Observation = {
   deadline: string;
 };
 
-const STORAGE_KEY = 'cse-inspection-2027-v1';
-const documentOptions = ['DUERP et plan d’actions', 'Registre santé et sécurité', 'Accidents, incidents et signalements', 'Fiches de données de sécurité', 'Consignes et procédures', 'Carnets de maintenance', 'Liste des formations et habilitations'];
-const equipmentOptions = ['Grille d’observation', 'Trame d’entretien', 'Équipements de protection', 'Appareil photo ou téléphone', 'Appareil de mesure adapté', 'Plan des locaux'];
+const STORAGE_KEY = 'cse-inspection-2027-v2';
+const LEGACY_STORAGE_KEY = 'cse-inspection-2027-v1';
 const themeOptions = ['Environnement de travail', 'Gestes, postures et déplacements', 'Produits et substances', 'Machines et équipements', 'Organisation et charge de travail', 'Relations et climat social', 'Travail isolé et coactivité', 'Circulation, incendie et secours'];
 const categories = ['Environnement', 'Ergonomie', 'Produits', 'Équipements', 'Organisation', 'Relations de travail', 'Coactivité', 'Circulation / secours', 'Autre'];
 
+const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+const makeTeamMember = (name = '', role = ''): TeamMember => ({ id: makeId(), name, role });
+
 const initialData: InspectionData = {
-  association: '', workforce: '', site: '', inspectionDate: '', startTime: '', endTime: '', objective: '', team: '', roles: '', activities: '', employees: '',
-  documents: [], equipment: [], themes: [], preparationNotes: '', duerpFollowUp: '', reportRecipients: '', nextReviewDate: '', reportValidated: false, resultsShared: false,
+  workUnit: '', job: '', inspectionDate: '', startTime: '', endTime: '', objective: '', teamMembers: [makeTeamMember()], activities: '', employees: '',
+  themes: [], preparationNotes: '', preparationValidated: false, inspectionValidated: false, duerpFollowUp: '', reportRecipients: '', nextReviewDate: '', reportValidated: false, resultsShared: false,
 };
 
 const makeObservation = (): Observation => ({
-  id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+  id: makeId(),
   zone: '', category: 'Environnement', facts: '', employeeFeedback: '', existingMeasures: '', riskLevel: 'À surveiller', proposedAction: '', owner: '', deadline: '',
 });
 
@@ -67,10 +73,38 @@ export default function InspectionWorkshop() {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as { data?: InspectionData; observations?: Observation[] };
-        if (parsed.data) setData({ ...initialData, ...parsed.data });
+        const parsed = JSON.parse(saved) as { data?: Partial<InspectionData> & { site?: string; team?: string; roles?: string }; observations?: Observation[] };
+        if (parsed.data) {
+          const legacyNames = typeof parsed.data.team === 'string' ? parsed.data.team.split('\n').map((item) => item.trim()).filter(Boolean) : [];
+          const legacyRoles = typeof parsed.data.roles === 'string' ? parsed.data.roles.split('\n').map((item) => item.trim()).filter(Boolean) : [];
+          const migratedTeam = Array.isArray(parsed.data.teamMembers) && parsed.data.teamMembers.length
+            ? parsed.data.teamMembers.map((member) => ({ ...member, id: member.id || makeId() }))
+            : legacyNames.length
+              ? legacyNames.map((name, index) => makeTeamMember(name, legacyRoles[index] || ''))
+              : [makeTeamMember()];
+          setData({
+            workUnit: parsed.data.workUnit || parsed.data.site || '',
+            job: parsed.data.job || '',
+            inspectionDate: parsed.data.inspectionDate || '',
+            startTime: parsed.data.startTime || '',
+            endTime: parsed.data.endTime || '',
+            objective: parsed.data.objective || '',
+            teamMembers: migratedTeam,
+            activities: parsed.data.activities || '',
+            employees: parsed.data.employees || '',
+            themes: Array.isArray(parsed.data.themes) ? parsed.data.themes : [],
+            preparationNotes: parsed.data.preparationNotes || '',
+            preparationValidated: Boolean(parsed.data.preparationValidated),
+            inspectionValidated: Boolean(parsed.data.inspectionValidated),
+            duerpFollowUp: parsed.data.duerpFollowUp || '',
+            reportRecipients: parsed.data.reportRecipients || '',
+            nextReviewDate: parsed.data.nextReviewDate || '',
+            reportValidated: Boolean(parsed.data.reportValidated),
+            resultsShared: Boolean(parsed.data.resultsShared),
+          });
+        }
         if (parsed.observations?.length) setObservations(parsed.observations);
       }
     } catch {
@@ -85,6 +119,7 @@ export default function InspectionWorkshop() {
     const timer = window.setTimeout(() => {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, observations }));
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
         setSavedLabel('Enregistré sur cet appareil');
       } catch {
         setSavedLabel('Sauvegarde indisponible');
@@ -93,17 +128,43 @@ export default function InspectionWorkshop() {
     return () => window.clearTimeout(timer);
   }, [data, observations, hydrated]);
 
-  const completedPreparation = useMemo(() => [data.association, data.site, data.inspectionDate, data.objective, data.team, data.activities].filter(Boolean).length, [data]);
+  const hasCompleteTeamMember = useMemo(() => data.teamMembers.some((member) => member.name.trim() && member.role.trim()), [data.teamMembers]);
+  const completedPreparation = useMemo(() => [data.workUnit, data.job, data.inspectionDate, data.objective, hasCompleteTeamMember ? 'team' : '', data.activities].filter(Boolean).length, [data, hasCompleteTeamMember]);
   const validObservations = useMemo(() => observations.filter((item) => item.zone.trim() || item.facts.trim() || item.proposedAction.trim()), [observations]);
   const priorityCount = useMemo(() => validObservations.filter((item) => item.riskLevel === 'Prioritaire' || item.riskLevel === 'Urgent').length, [validObservations]);
 
-  const updateData = <K extends keyof InspectionData>(field: K, value: InspectionData[K]) => setData((current) => ({ ...current, [field]: value }));
-  const toggleChoice = (field: 'documents' | 'equipment' | 'themes', value: string) => {
-    setData((current) => ({ ...current, [field]: current[field].includes(value) ? current[field].filter((item) => item !== value) : [...current[field], value] }));
+  const preparationFields: (keyof InspectionData)[] = ['workUnit', 'job', 'inspectionDate', 'startTime', 'endTime', 'objective', 'teamMembers', 'activities', 'employees', 'themes', 'preparationNotes'];
+  const updateData = <K extends keyof InspectionData>(field: K, value: InspectionData[K]) => setData((current) => ({
+    ...current,
+    [field]: value,
+    ...(preparationFields.includes(field) ? { preparationValidated: false, inspectionValidated: false } : {}),
+  }));
+  const toggleChoice = (value: string) => {
+    setData((current) => ({
+      ...current,
+      themes: current.themes.includes(value) ? current.themes.filter((item) => item !== value) : [...current.themes, value],
+      preparationValidated: false,
+      inspectionValidated: false,
+    }));
   };
-  const updateObservation = (id: string, field: keyof Observation, value: string) => setObservations((current) => current.map((item) => item.id === id ? { ...item, [field]: value } : item));
-  const addObservation = () => setObservations((current) => [...current, makeObservation()]);
-  const removeObservation = (id: string) => setObservations((current) => current.length === 1 ? current : current.filter((item) => item.id !== id));
+  const updateTeamMember = (id: string, field: 'name' | 'role', value: string) => updateData('teamMembers', data.teamMembers.map((member) => member.id === id ? { ...member, [field]: value } : member));
+  const addTeamMember = () => updateData('teamMembers', [...data.teamMembers, makeTeamMember()]);
+  const removeTeamMember = (id: string) => updateData('teamMembers', data.teamMembers.length === 1 ? data.teamMembers : data.teamMembers.filter((member) => member.id !== id));
+  const invalidateInspection = () => setData((current) => ({ ...current, inspectionValidated: false }));
+  const updateObservation = (id: string, field: keyof Observation, value: string) => {
+    setObservations((current) => current.map((item) => item.id === id ? { ...item, [field]: value } : item));
+    invalidateInspection();
+  };
+  const addObservation = () => { setObservations((current) => [...current, makeObservation()]); invalidateInspection(); };
+  const removeObservation = (id: string) => { setObservations((current) => current.length === 1 ? current : current.filter((item) => item.id !== id)); invalidateInspection(); };
+  const validatePreparation = () => {
+    setData((current) => ({ ...current, preparationValidated: true }));
+    setStep(2);
+  };
+  const validateInspection = () => {
+    setData((current) => ({ ...current, inspectionValidated: true }));
+    setStep(3);
+  };
 
   const downloadReport = async () => {
     setIsGenerating(true);
@@ -120,7 +181,7 @@ export default function InspectionWorkshop() {
 
       const footer = () => {
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(103, 116, 109);
-        pdf.text(`Rapport d’inspection CSE · ${data.association || 'Association non renseignée'}`, margin, pageHeight - 10);
+        pdf.text(`Rapport d’inspection CSE · ${data.workUnit || 'Unité de travail non renseignée'}`, margin, pageHeight - 10);
         pdf.text(`Page ${pageNumber}`, pageWidth - margin, pageHeight - 10, { align: 'right' });
       };
       const nextPage = () => { footer(); pdf.addPage(); pageNumber += 1; y = 18; };
@@ -148,21 +209,17 @@ export default function InspectionWorkshop() {
       y = 62;
 
       sectionTitle('1. Identification et organisation');
-      paragraph('Association / entreprise', data.association);
-      paragraph('Effectif', data.workforce || 'Moins de 50 salariés');
-      paragraph('Lieu ou périmètre inspecté', data.site);
+      paragraph('Unité de travail', data.workUnit);
+      paragraph('Métier', data.job);
       paragraph('Horaires de l’inspection', `${data.startTime || '—'} à ${data.endTime || '—'}`);
-      paragraph('Équipe d’inspection', data.team);
-      paragraph('Répartition des rôles', data.roles);
+      paragraph('Équipe d’inspection', data.teamMembers.filter((member) => member.name.trim() || member.role.trim()).map((member) => `${member.name || 'Nom à préciser'} — ${member.role || 'Rôle à préciser'}`).join('\n'));
       paragraph('Objectif retenu', data.objective);
       paragraph('Activités observées et moment choisi', data.activities);
       paragraph('Salariés ou interlocuteurs rencontrés', data.employees);
 
       sectionTitle('2. Préparation');
       paragraph('Thèmes retenus', data.themes.join(' · '));
-      paragraph('Documents examinés', data.documents.join(' · '));
-      paragraph('Outils et matériel mobilisés', data.equipment.join(' · '));
-      paragraph('Notes préparatoires', data.preparationNotes);
+      paragraph('Questions préparées et points à vérifier', data.preparationNotes);
 
       sectionTitle('3. Observations de terrain');
       if (!validObservations.length) paragraph('', 'Aucune observation renseignée.');
@@ -215,7 +272,16 @@ export default function InspectionWorkshop() {
       <nav className="inspection-steps" aria-label="Étapes de l’atelier">
         {[
           [1, 'Avant', 'Préparer'], [2, 'Pendant', 'Inspecter'], [3, 'Après', 'Rapport'],
-        ].map(([number, label, title]) => <button key={number} className={step === number ? 'active' : step > Number(number) ? 'done' : ''} onClick={() => setStep(Number(number))}><span>{number}</span><small>{label}</small><strong>{title}</strong></button>)}
+        ].map(([number, label, title]) => {
+          const isLocked = (number === 2 && !data.preparationValidated) || (number === 3 && !data.inspectionValidated);
+          return <button
+            key={number}
+            className={`${step === number ? 'active' : step > Number(number) ? 'done' : ''}${isLocked ? ' locked' : ''}`}
+            onClick={() => !isLocked && setStep(Number(number))}
+            disabled={isLocked}
+            title={isLocked ? number === 2 ? 'Validez d’abord la préparation' : 'Validez d’abord l’inspection' : undefined}
+          ><span>{isLocked ? '·' : number}</span><small>{label}</small><strong>{title}</strong></button>;
+        })}
         <p>{savedLabel}</p>
       </nav>
 
@@ -223,20 +289,43 @@ export default function InspectionWorkshop() {
         {step === 1 && <div className="inspection-stage">
           <div className="inspection-stage-heading"><div><p className="eyebrow">Étape 1 · Avant</p><h2>Formaliser, s’informer, planifier</h2></div><span>{completedPreparation}/6 informations essentielles</span></div>
 
-          <div className="inspection-panel"><h3>Cadre de l’inspection</h3><div className="inspection-form-grid three"><label>Association ou entreprise<input value={data.association} onChange={(event) => updateData('association', event.target.value)} placeholder="Nom de la structure" /></label><label>Effectif<input value={data.workforce} onChange={(event) => updateData('workforce', event.target.value)} placeholder="Ex. : 32 salariés" /></label><label>Lieu ou périmètre<input value={data.site} onChange={(event) => updateData('site', event.target.value)} placeholder="Service, atelier, site…" /></label></div><div className="inspection-form-grid three"><label>Date prévue en 2027<input type="date" min="2027-01-01" max="2027-12-31" value={data.inspectionDate} onChange={(event) => updateData('inspectionDate', event.target.value)} /></label><label>Heure de début<input type="time" value={data.startTime} onChange={(event) => updateData('startTime', event.target.value)} /></label><label>Heure de fin<input type="time" value={data.endTime} onChange={(event) => updateData('endTime', event.target.value)} /></label></div><label>Objectif précis de l’inspection<textarea rows={3} value={data.objective} onChange={(event) => updateData('objective', event.target.value)} placeholder="Ex. : observer les conditions de travail lors de la fermeture du site et vérifier les mesures prévues au DUERP…" /></label></div>
+          <div className="inspection-panel">
+            <h3>Cadre de l’inspection</h3>
+            <div className="inspection-form-grid">
+              <label>Unité de travail<input value={data.workUnit} onChange={(event) => updateData('workUnit', event.target.value)} placeholder="Ex. : accueil, atelier, service administratif…" /></label>
+              <label>Métier<input value={data.job} onChange={(event) => updateData('job', event.target.value)} placeholder="Ex. : éducateur spécialisé, agent d’accueil…" /></label>
+            </div>
+            <div className="inspection-form-grid three">
+              <label>Date prévue en 2027<input type="date" min="2027-01-01" max="2027-12-31" value={data.inspectionDate} onChange={(event) => updateData('inspectionDate', event.target.value)} /></label>
+              <label>Heure de début<input type="time" value={data.startTime} onChange={(event) => updateData('startTime', event.target.value)} /></label>
+              <label>Heure de fin<input type="time" value={data.endTime} onChange={(event) => updateData('endTime', event.target.value)} /></label>
+            </div>
+            <label>Objectif précis de l’inspection<textarea rows={3} value={data.objective} onChange={(event) => updateData('objective', event.target.value)} placeholder="Ex. : observer les conditions de travail lors de la fermeture du site et vérifier les mesures prévues au DUERP…" /></label>
+          </div>
 
-          <div className="inspection-panel"><h3>Équipe et moment choisi</h3><div className="inspection-form-grid"><label>Composition de l’équipe<textarea rows={3} value={data.team} onChange={(event) => updateData('team', event.target.value)} placeholder="Élus, accompagnants, personnes qualifiées…" /></label><label>Rôle de chacun<textarea rows={3} value={data.roles} onChange={(event) => updateData('roles', event.target.value)} placeholder="Observation, entretiens, prise de notes, photos…" /></label></div><label>Activités à observer et raison du créneau choisi<textarea rows={3} value={data.activities} onChange={(event) => updateData('activities', event.target.value)} placeholder="Jour, horaire atypique, pic d’activité, coactivité ou situation particulière…" /></label><label>Salariés ou interlocuteurs à rencontrer<textarea rows={2} value={data.employees} onChange={(event) => updateData('employees', event.target.value)} placeholder="Métiers, équipes, encadrement, prestataires…" /></label></div>
+          <div className="inspection-panel team-panel">
+            <div className="team-heading"><div><h3>Équipe et moment choisi</h3><p>Ajoutez chaque personne avec le rôle qu’elle aura pendant l’inspection.</p></div><button type="button" onClick={addTeamMember}>+ Ajouter une personne</button></div>
+            <div className="team-members">
+              {data.teamMembers.map((member, index) => <div className="team-member-row" key={member.id}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <label>Nom de la personne<input value={member.name} onChange={(event) => updateTeamMember(member.id, 'name', event.target.value)} placeholder="Nom et prénom" /></label>
+                <label>Rôle pendant l’inspection<select value={member.role} onChange={(event) => updateTeamMember(member.id, 'role', event.target.value)}><option value="">Choisir un rôle</option><option>Conduite de l’inspection</option><option>Observation du travail</option><option>Entretiens avec les salariés</option><option>Prise de notes</option><option>Relevés ou photographies</option><option>Appui technique</option></select></label>
+                <button type="button" onClick={() => removeTeamMember(member.id)} disabled={data.teamMembers.length === 1} aria-label={`Supprimer ${member.name || `la personne ${index + 1}`}`}>Supprimer</button>
+              </div>)}
+            </div>
+            <label>Activités à observer et raison du créneau choisi<textarea rows={3} value={data.activities} onChange={(event) => updateData('activities', event.target.value)} placeholder="Jour, horaire atypique, pic d’activité, coactivité ou situation particulière…" /></label>
+            <label>Salariés ou interlocuteurs à rencontrer<textarea rows={2} value={data.employees} onChange={(event) => updateData('employees', event.target.value)} placeholder="Noms, métiers, équipes, encadrement, prestataires…" /></label>
+          </div>
 
-          <Checklist title="Documents à consulter" subtitle="Rassemblez les informations utiles avant de vous déplacer." options={documentOptions} selected={data.documents} onToggle={(value) => toggleChoice('documents', value)} />
-          <Checklist title="Matériel à prévoir" subtitle="Choisissez uniquement ce qui est adapté au terrain." options={equipmentOptions} selected={data.equipment} onToggle={(value) => toggleChoice('equipment', value)} />
-          <Checklist title="Thèmes d’observation" subtitle="Définissez un périmètre réaliste pour garder une inspection ciblée." options={themeOptions} selected={data.themes} onToggle={(value) => toggleChoice('themes', value)} />
+          <Checklist title="Thèmes d’observation" subtitle="Définissez un périmètre réaliste pour garder une inspection ciblée." options={themeOptions} selected={data.themes} onToggle={toggleChoice} />
 
-          <div className="inspection-panel"><label>Notes préparatoires<textarea rows={4} value={data.preparationNotes} onChange={(event) => updateData('preparationNotes', event.target.value)} placeholder="Points de vigilance, questions à poser, informations à vérifier…" /></label></div>
-          <div className="inspection-stage-actions"><a href="https://www.inrs.fr/media.html?refINRS=ED+6513" target="_blank" rel="noreferrer">Consulter la fiche INRS ED 6513 ↗</a><button className="button primary" onClick={() => setStep(2)}>Passer à l’inspection →</button></div>
+          <div className="inspection-panel"><label>Questions préparées et points à vérifier<textarea rows={4} value={data.preparationNotes} onChange={(event) => updateData('preparationNotes', event.target.value)} placeholder="Questions à poser aux salariés, points de vigilance et informations à vérifier sur le terrain…" /></label></div>
+          <div className="inspection-stage-actions validation-action"><a href="https://www.inrs.fr/media.html?refINRS=ED+6513" target="_blank" rel="noreferrer">Consulter la fiche INRS ED 6513 ↗</a><div><small>Vérifiez les informations utiles, puis validez pour accéder au terrain.</small><button className="button primary" onClick={validatePreparation}>Valider la préparation et inspecter →</button></div></div>
         </div>}
 
         {step === 2 && <div className="inspection-stage">
           <div className="inspection-stage-heading"><div><p className="eyebrow">Étape 2 · Pendant</p><h2>Observer, échanger et contrôler</h2></div><span>{validObservations.length} observation{validObservations.length > 1 ? 's' : ''} renseignée{validObservations.length > 1 ? 's' : ''}</span></div>
+          <PreparationReminder data={data} onEdit={() => setStep(1)} />
           <aside className="field-reminder"><strong>Sur le terrain</strong><p>Décrivez des faits observables, demandez au salarié comment le travail se réalise réellement et distinguez ce qui existe déjà de ce qui reste à améliorer.</p><div><span>Questions ouvertes</span><span>Regard collectif</span><span>Écoute bienveillante</span><span>Photos avec accord</span></div></aside>
 
           <div className="observation-list">{observations.map((item, index) => <article className="observation-card" key={item.id}>
@@ -248,12 +337,12 @@ export default function InspectionWorkshop() {
             <div className="inspection-form-grid"><label>Responsable proposé<input value={item.owner} onChange={(event) => updateObservation(item.id, 'owner', event.target.value)} placeholder="Direction, responsable, prestataire…" /></label><label>Échéance proposée<input type="date" value={item.deadline} onChange={(event) => updateObservation(item.id, 'deadline', event.target.value)} /></label></div>
           </article>)}</div>
           <button className="add-observation" onClick={addObservation}><span>+</span> Ajouter une observation</button>
-          <div className="inspection-stage-actions"><button className="text-button" onClick={() => setStep(1)}>← Revenir à la préparation</button><button className="button primary" onClick={() => setStep(3)}>Analyser et produire le rapport →</button></div>
+          <div className="inspection-stage-actions"><button className="text-button" onClick={() => setStep(1)}>← Modifier la préparation</button><button className="button primary" onClick={validateInspection}>Valider l’inspection et produire le rapport →</button></div>
         </div>}
 
         {step === 3 && <div className="inspection-stage">
           <div className="inspection-stage-heading"><div><p className="eyebrow">Étape 3 · Après</p><h2>Analyser, discuter, proposer</h2></div><span>{priorityCount} point{priorityCount > 1 ? 's' : ''} prioritaire{priorityCount > 1 ? 's' : ''}</span></div>
-          <div className="report-summary"><div><span>Inspection</span><strong>{formatDate(data.inspectionDate)}</strong><small>{data.site || 'Lieu à préciser'}</small></div><div><span>Observations</span><strong>{validObservations.length}</strong><small>situations consignées</small></div><div><span>Actions</span><strong>{validObservations.filter((item) => item.proposedAction.trim()).length}</strong><small>mesures proposées</small></div><div><span>Priorités</span><strong>{priorityCount}</strong><small>prioritaires ou urgentes</small></div></div>
+          <div className="report-summary"><div><span>Inspection</span><strong>{formatDate(data.inspectionDate)}</strong><small>{data.workUnit || 'Unité de travail à préciser'} · {data.job || 'Métier à préciser'}</small></div><div><span>Observations</span><strong>{validObservations.length}</strong><small>situations consignées</small></div><div><span>Actions</span><strong>{validObservations.filter((item) => item.proposedAction.trim()).length}</strong><small>mesures proposées</small></div><div><span>Priorités</span><strong>{priorityCount}</strong><small>prioritaires ou urgentes</small></div></div>
 
           <div className="inspection-panel"><h3>Préparer la présentation à la direction</h3><label>Comment relier les constats au DUERP et à la politique de prévention ?<textarea rows={4} value={data.duerpFollowUp} onChange={(event) => updateData('duerpFollowUp', event.target.value)} placeholder="Mise à jour d’un risque, ajout d’une mesure, révision d’une priorité, suivi d’un plan d’action…" /></label><div className="inspection-form-grid"><label>Destinataires du rapport<input value={data.reportRecipients} onChange={(event) => updateData('reportRecipients', event.target.value)} placeholder="Direction, encadrement, salariés…" /></label><label>Date du prochain suivi<input type="date" value={data.nextReviewDate} onChange={(event) => updateData('nextReviewDate', event.target.value)} /></label></div><div className="validation-checks"><label><input type="checkbox" checked={data.reportValidated} onChange={(event) => updateData('reportValidated', event.target.checked)} /><span>Le compte rendu a été relu et validé avec les participants.</span></label><label><input type="checkbox" checked={data.resultsShared} onChange={(event) => updateData('resultsShared', event.target.checked)} /><span>Le partage des résultats avec les salariés et l’encadrement est organisé.</span></label></div></div>
 
@@ -269,4 +358,19 @@ export default function InspectionWorkshop() {
 
 function Checklist({ title, subtitle, options, selected, onToggle }: { title: string; subtitle: string; options: string[]; selected: string[]; onToggle: (value: string) => void }) {
   return <div className="inspection-panel checklist-panel"><div className="checklist-heading"><div><h3>{title}</h3><p>{subtitle}</p></div><span>{selected.length}/{options.length}</span></div><div className="checklist-grid">{options.map((option) => <label className={selected.includes(option) ? 'selected' : ''} key={option}><input type="checkbox" checked={selected.includes(option)} onChange={() => onToggle(option)} /><span>{option}</span></label>)}</div></div>;
+}
+
+function PreparationReminder({ data, onEdit }: { data: InspectionData; onEdit: () => void }) {
+  const team = data.teamMembers.filter((member) => member.name.trim() || member.role.trim());
+  return <section className="preparation-reminder" aria-labelledby="preparation-reminder-title">
+    <div className="preparation-reminder-heading"><div><p className="eyebrow">Votre fiche terrain</p><h3 id="preparation-reminder-title">Les informations préparées restent sous vos yeux</h3></div><button className="text-button" onClick={onEdit}>Modifier la préparation</button></div>
+    <div className="preparation-reminder-grid">
+      <div><span>Cadre</span><strong>{data.workUnit || 'Unité non renseignée'}</strong><p>{data.job || 'Métier non renseigné'} · {formatDate(data.inspectionDate)}{data.startTime || data.endTime ? ` · ${data.startTime || '—'} à ${data.endTime || '—'}` : ''}</p></div>
+      <div><span>Objectif</span><p>{data.objective || 'Aucun objectif renseigné.'}</p></div>
+      <div><span>Équipe</span>{team.length ? <ul>{team.map((member) => <li key={member.id}><strong>{member.name || 'Nom à préciser'}</strong><small>{member.role || 'Rôle à préciser'}</small></li>)}</ul> : <p>Aucune personne renseignée.</p>}</div>
+      <div><span>Activités à observer</span><p>{data.activities || 'Aucune activité renseignée.'}</p></div>
+      <div><span>Personnes à rencontrer</span><p>{data.employees || 'Aucun interlocuteur renseigné.'}</p></div>
+      <div className="preparation-reminder-wide"><span>Questions préparées et points à vérifier</span><p>{data.preparationNotes || 'Aucune question préparée.'}</p>{data.themes.length > 0 && <div className="preparation-theme-list">{data.themes.map((theme) => <small key={theme}>{theme}</small>)}</div>}</div>
+    </div>
+  </section>;
 }
