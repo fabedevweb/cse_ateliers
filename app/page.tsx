@@ -38,10 +38,10 @@ const workshops = [
   {
     number: '05',
     type: 'Atelier guidé · DUERP',
-    title: 'Analyse différenciée & DUERP-CSE',
-    description: 'Analysez une situation de travail en tenant compte des expositions des femmes et des hommes, puis rédigez votre proposition de document unique.',
-    meta: '5 étapes · Cotation · Rapport PDF',
-    href: '/ateliers/duerp-analyse-differenciee',
+    title: 'Du DUERP au plan d’action',
+    description: 'Construisez un risque pas à pas, calculez son niveau résiduel puis transformez-le en action avec les neuf principes de prévention.',
+    meta: 'Questions guidées · Cotation · Plan d’action · PDF',
+    href: '/ateliers/duerp',
     accent: 'duerp',
   },
 ];
