@@ -35,6 +35,15 @@ const workshops = [
     href: '/ateliers/inspection',
     accent: 'inspection',
   },
+  {
+    number: '05',
+    type: 'Atelier guidé · DUERP',
+    title: 'Analyse différenciée & DUERP-CSE',
+    description: 'Analysez une situation de travail en tenant compte des expositions des femmes et des hommes, puis rédigez votre proposition de document unique.',
+    meta: '5 étapes · Cotation · Rapport PDF',
+    href: '/ateliers/duerp-analyse-differenciee',
+    accent: 'duerp',
+  },
 ];
 
 export default function Home() {
@@ -65,7 +74,7 @@ export default function Home() {
           <p>Chaque carte ouvre directement l’activité. De nouveaux ateliers pourront être ajoutés ici au fil de vos formations.</p>
         </div>
 
-        <div className="workshop-cards four-cards">
+        <div className="workshop-cards five-cards">
           {workshops.map((workshop) => (
             <a className={`workshop-card ${workshop.accent}`} href={workshop.href} key={workshop.number}>
               <div className="workshop-card-top">
