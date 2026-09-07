@@ -49,15 +49,15 @@ const themeOptions = ['Environnement de travail', 'Gestes, postures et déplacem
 const categories = ['Environnement', 'Ergonomie', 'Produits', 'Équipements', 'Organisation', 'Relations de travail', 'Coactivité', 'Circulation / secours', 'Autre'];
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-const makeTeamMember = (name = '', role = ''): TeamMember => ({ id: makeId(), name, role });
+const makeTeamMember = (name = '', role = '', id = makeId()): TeamMember => ({ id, name, role });
 
 const initialData: InspectionData = {
-  workUnit: '', job: '', inspectionDate: '', startTime: '', endTime: '', objective: '', teamMembers: [makeTeamMember()], activities: '', employees: '',
+  workUnit: '', job: '', inspectionDate: '', startTime: '', endTime: '', objective: '', teamMembers: [makeTeamMember('', '', 'team-member-1')], activities: '', employees: '',
   themes: [], preparationNotes: '', preparationValidated: false, inspectionValidated: false, duerpFollowUp: '', reportRecipients: '', nextReviewDate: '', reportValidated: false, resultsShared: false,
 };
 
-const makeObservation = (): Observation => ({
-  id: makeId(),
+const makeObservation = (id = makeId()): Observation => ({
+  id,
   zone: '', category: 'Environnement', facts: '', employeeFeedback: '', existingMeasures: '', riskLevel: 'À surveiller', proposedAction: '', owner: '', deadline: '',
 });
 
@@ -66,7 +66,7 @@ const formatDate = (value: string) => value ? new Intl.DateTimeFormat('fr-FR', {
 export default function InspectionWorkshop() {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<InspectionData>(initialData);
-  const [observations, setObservations] = useState<Observation[]>([makeObservation()]);
+  const [observations, setObservations] = useState<Observation[]>([makeObservation('observation-1')]);
   const [hydrated, setHydrated] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [savedLabel, setSavedLabel] = useState('Sauvegarde locale active');
