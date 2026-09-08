@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
+
 const workshops = [
   {
     number: '01',
@@ -38,11 +40,20 @@ const workshops = [
   {
     number: '05',
     type: 'Atelier guidé · DUERP',
-    title: 'Du DUERP au plan d’action',
-    description: 'Construisez un risque pas à pas, calculez son niveau résiduel puis transformez-le en action avec les neuf principes de prévention.',
-    meta: 'Questions guidées · Cotation · Plan d’action · PDF',
+    title: 'Construire une ligne DUERP',
+    description: 'Partez du travail réel, identifiez le risque et le danger, puis calculez le risque brut et le risque résiduel.',
+    meta: '5 étapes · Cotation · Tableau DUERP · PDF',
     href: '/ateliers/duerp',
     accent: 'duerp',
+  },
+  {
+    number: '06',
+    type: 'Atelier guidé · Prévention',
+    title: 'Construire un plan d’action',
+    description: 'Reprenez un risque du DUERP, examinez les neuf principes de prévention et organisez une action concrète et vérifiable.',
+    meta: '9 principes · Pilotage · Échéances · PDF',
+    href: '/ateliers/plan-action',
+    accent: 'action',
   },
 ];
 
@@ -74,7 +85,7 @@ export default function Home() {
           <p>Chaque carte ouvre directement l’activité. De nouveaux ateliers pourront être ajoutés ici au fil de vos formations.</p>
         </div>
 
-        <div className="workshop-cards five-cards">
+        <div className="workshop-cards six-cards">
           {workshops.map((workshop) => (
             <a className={`workshop-card ${workshop.accent}`} href={workshop.href} key={workshop.number}>
               <div className="workshop-card-top">
