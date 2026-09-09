@@ -55,6 +55,15 @@ const workshops = [
     href: '/ateliers/plan-action',
     accent: 'action',
   },
+  {
+    number: '07',
+    type: 'Atelier guidé · AT/MP',
+    title: 'Enquête',
+    description: 'Recueillez les faits après un accident ou une maladie professionnelle, puis construisez collectivement l’arbre des causes.',
+    meta: 'Méthode INRS · Arbre des causes · PowerPoint',
+    href: '/ateliers/enquete',
+    accent: 'investigation',
+  },
 ];
 
 export default function Home() {
@@ -85,7 +94,7 @@ export default function Home() {
           <p>Chaque carte ouvre directement l’activité. De nouveaux ateliers pourront être ajoutés ici au fil de vos formations.</p>
         </div>
 
-        <div className="workshop-cards six-cards">
+        <div className="workshop-cards seven-cards">
           {workshops.map((workshop) => (
             <a className={`workshop-card ${workshop.accent}`} href={workshop.href} key={workshop.number}>
               <div className="workshop-card-top">
