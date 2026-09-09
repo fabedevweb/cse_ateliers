@@ -2,7 +2,25 @@
 
 /* eslint-disable react-hooks/set-state-in-effect, @next/next/no-html-link-for-pages */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import {
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  Controls,
+  Handle,
+  MarkerType,
+  Position,
+  ReactFlow,
+  reconnectEdge,
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  type NodeProps,
+} from '@xyflow/react';
 
 type EventType = 'Accident du travail' | 'Accident de trajet' | 'Maladie professionnelle' | 'Presqu’accident';
 type CauseNature = 'Humaine' | 'Organisationnelle' | 'Technique';
@@ -17,6 +35,16 @@ type Fact = {
   actionable: boolean;
   parentId: string;
 };
+
+type CauseNodeData = {
+  label: string;
+  nature?: CauseNature;
+  nodeType?: NodeType;
+  actionable?: boolean;
+  ultimate?: boolean;
+};
+
+type CauseFlowNode = Node<CauseNodeData, 'causeFact'>;
 
 type InvestigationData = {
   eventType: EventType;
@@ -106,11 +134,62 @@ const steps = [
 const formatDate = (value: string) => value ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(`${value}T12:00:00`)) : 'Non renseignée';
 const short = (value: string, max = 160) => value.trim().length > max ? `${value.trim().slice(0, max - 1)}…` : value.trim() || 'Non renseigné';
 
+const flowEdge = (source: string, target: string, id = `edge-${source}-${target}`): Edge => ({
+  id,
+  source,
+  target,
+  type: 'smoothstep',
+  markerEnd: { type: MarkerType.ArrowClosed, color: '#687d74', width: 18, height: 18 },
+  style: { stroke: '#687d74', strokeWidth: 2 },
+});
+
+const buildInitialGraph = (facts: Fact[], ultimateLabel: string) => {
+  const shownFacts = facts.filter((fact) => fact.description.trim());
+  const validIds = new Set([DAMAGE_ID, ...shownFacts.map((fact) => fact.id)]);
+  const parentOf = new Map(shownFacts.map((fact) => [fact.id, validIds.has(fact.parentId) ? fact.parentId : DAMAGE_ID]));
+  const depthOf = (id: string, seen = new Set<string>()): number => {
+    const parentId = parentOf.get(id) || DAMAGE_ID;
+    if (parentId === DAMAGE_ID || seen.has(parentId)) return 1;
+    return 1 + depthOf(parentId, new Set([...seen, id]));
+  };
+  const levels = new Map<number, Fact[]>();
+  shownFacts.forEach((fact) => {
+    const depth = depthOf(fact.id);
+    levels.set(depth, [...(levels.get(depth) || []), fact]);
+  });
+  const nodes: CauseFlowNode[] = shownFacts.map((fact) => {
+    const level = depthOf(fact.id);
+    const group = levels.get(level) || [];
+    const index = group.findIndex((item) => item.id === fact.id);
+    return {
+      id: fact.id,
+      type: 'causeFact',
+      position: { x: 920 - level * 310, y: 70 + index * 150 },
+      data: { label: fact.description, nature: fact.nature, nodeType: fact.nodeType, actionable: fact.actionable },
+    };
+  });
+  nodes.push({
+    id: DAMAGE_ID,
+    type: 'causeFact',
+    position: { x: 960, y: Math.max(100, (Math.max(1, ...Array.from(levels.values(), (group) => group.length)) - 1) * 75) },
+    data: { label: ultimateLabel.trim() || 'Fait ultime à préciser', ultimate: true },
+    draggable: false,
+    deletable: false,
+  });
+  return {
+    nodes,
+    edges: shownFacts.map((fact) => flowEdge(fact.id, parentOf.get(fact.id) || DAMAGE_ID)),
+  };
+};
+
 export default function InvestigationWorkshop() {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<InvestigationData>(initialData);
   const [witnesses, setWitnesses] = useState<Witness[]>([blankWitness()]);
   const [facts, setFacts] = useState<Fact[]>([blankFact()]);
+  const [graphNodes, setGraphNodes] = useState<CauseFlowNode[]>([]);
+  const [graphEdges, setGraphEdges] = useState<Edge[]>([]);
+  const [graphSeeded, setGraphSeeded] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [savedLabel, setSavedLabel] = useState('Sauvegarde locale active');
   const [isExporting, setIsExporting] = useState(false);
@@ -119,10 +198,15 @@ export default function InvestigationWorkshop() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as { data?: InvestigationData; witnesses?: Witness[]; facts?: Fact[]; step?: number };
+        const parsed = JSON.parse(saved) as { data?: InvestigationData; witnesses?: Witness[]; facts?: Fact[]; graphNodes?: CauseFlowNode[]; graphEdges?: Edge[]; step?: number };
         if (parsed.data) setData({ ...initialData, ...parsed.data });
         if (parsed.witnesses?.length) setWitnesses(parsed.witnesses);
         if (parsed.facts?.length) setFacts(parsed.facts);
+        if (Array.isArray(parsed.graphNodes)) {
+          setGraphNodes(parsed.graphNodes);
+          setGraphSeeded(true);
+        }
+        if (Array.isArray(parsed.graphEdges)) setGraphEdges(parsed.graphEdges);
         if (parsed.step && parsed.step >= 1 && parsed.step <= 5) setStep(parsed.step);
       }
     } catch {
@@ -136,30 +220,58 @@ export default function InvestigationWorkshop() {
     if (!hydrated) return;
     const timer = window.setTimeout(() => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, witnesses, facts, step }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, witnesses, facts, graphNodes, graphEdges, step }));
         setSavedLabel('Enregistré sur cet appareil');
       } catch {
         setSavedLabel('Sauvegarde indisponible');
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [data, witnesses, facts, step, hydrated]);
+  }, [data, witnesses, facts, graphNodes, graphEdges, step, hydrated]);
 
   const usableWitnesses = useMemo(() => witnesses.filter((item) => item.name.trim() || item.statement.trim()), [witnesses]);
   const usableFacts = useMemo(() => facts.filter((item) => item.description.trim()), [facts]);
   const rootCauses = useMemo(() => usableFacts.filter((item) => item.actionable || item.nodeType === 'Fait de base'), [usableFacts]);
   const completion = useMemo(() => [data.company, data.accidentDate, data.victimName, data.victimPosition, data.usualTask, data.narrative, data.harmfulEvent, usableFacts.length ? 'faits' : ''].filter(Boolean).length, [data, usableFacts]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    const defaults = buildInitialGraph(usableFacts, data.harmfulEvent);
+    const validIds = new Set(defaults.nodes.map((node) => node.id));
+    if (!graphSeeded) {
+      setGraphNodes(defaults.nodes);
+      setGraphEdges(defaults.edges);
+      setGraphSeeded(true);
+      return;
+    }
+    setGraphNodes((current) => {
+      const currentById = new Map(current.map((node) => [node.id, node]));
+      return defaults.nodes.map((node) => {
+        const existing = currentById.get(node.id);
+        return existing ? { ...node, position: existing.position, selected: existing.selected } : node;
+      });
+    });
+    setGraphEdges((current) => current.filter((edge) => validIds.has(edge.source) && validIds.has(edge.target) && edge.source !== DAMAGE_ID));
+  }, [data.harmfulEvent, graphSeeded, hydrated, usableFacts]);
+
   const updateData = <K extends keyof InvestigationData>(key: K, value: InvestigationData[K]) => setData((current) => ({ ...current, [key]: value }));
   const updateWitness = (id: string, key: keyof Witness, value: string) => setWitnesses((current) => current.map((item) => item.id === id ? { ...item, [key]: value } : item));
   const updateFact = <K extends keyof Fact>(id: string, key: K, value: Fact[K]) => setFacts((current) => current.map((item) => item.id === id ? { ...item, [key]: value } : item));
-  const removeFact = (id: string) => setFacts((current) => current.filter((item) => item.id !== id).map((item) => item.parentId === id ? { ...item, parentId: DAMAGE_ID } : item));
+  const removeFact = (id: string) => {
+    setFacts((current) => current.filter((item) => item.id !== id).map((item) => item.parentId === id ? { ...item, parentId: DAMAGE_ID } : item));
+    setGraphNodes((current) => current.filter((node) => node.id !== id));
+    setGraphEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
+  };
   const toggleEpi = (value: string) => updateData('epis', data.epis.includes(value) ? data.epis.filter((item) => item !== value) : [...data.epis, value]);
 
   const loadExample = () => {
     setData(exampleData);
     setWitnesses([{ id: makeId(), name: 'Noah Bernard', role: 'Aide-conducteur', statement: 'Il confirme le redémarrage du poussoir après l’ouverture du carter.' }]);
     setFacts(exampleFacts);
+    const exampleGraph = buildInitialGraph(exampleFacts, exampleData.harmfulEvent);
+    setGraphNodes(exampleGraph.nodes);
+    setGraphEdges(exampleGraph.edges);
+    setGraphSeeded(true);
     setStep(1);
   };
 
@@ -168,6 +280,9 @@ export default function InvestigationWorkshop() {
     setData(initialData);
     setWitnesses([blankWitness()]);
     setFacts([blankFact()]);
+    setGraphNodes([]);
+    setGraphEdges([]);
+    setGraphSeeded(true);
     setStep(1);
     localStorage.removeItem(STORAGE_KEY);
   };
@@ -234,7 +349,7 @@ export default function InvestigationWorkshop() {
       addTitle(story, 'Déroulement et conséquences', '03 · Reconstitution');
       addSection(story, 'Récit objectif', data.narrative, 0.65, 1.7, 8.1, 3.95);
       addSection(story, 'Conséquences', `${data.consequenceType}\n${data.daysOff ? `${data.daysOff} jour(s) d’arrêt` : ''}\n${data.injuryLocation}\n${data.injuryNature}`, 9.15, 1.7, 3.5, 1.75);
-      addSection(story, 'Fait dommageable', data.harmfulEvent, 9.15, 4.0, 3.5, 1.65);
+      addSection(story, 'Fait ultime', data.harmfulEvent, 9.15, 4.0, 3.5, 1.65);
 
       const factChunks = usableFacts.length ? Array.from({ length: Math.ceil(usableFacts.length / 7) }, (_, index) => usableFacts.slice(index * 7, index * 7 + 7)) : [[]];
       factChunks.forEach((chunk, chunkIndex) => {
@@ -253,29 +368,42 @@ export default function InvestigationWorkshop() {
 
       const tree = pptx.addSlide('REPORT');
       addTitle(tree, 'Arbre des causes', '05 · Enchaînement causal');
-      tree.addText(short(data.harmfulEvent, 150), { x: 4.45, y: 1.62, w: 4.45, h: 0.82, fontSize: 14, bold: true, color: 'FFFFFF', align: 'center', valign: 'mid', fill: { color: 'A43D31' }, line: { color: 'A43D31' }, margin: 0.08, fit: 'shrink' });
-      const shownFacts = usableFacts.slice(0, 10);
-      const levels = new Map<string, number>([[DAMAGE_ID, 0]]);
-      shownFacts.forEach((fact) => levels.set(fact.id, (levels.get(fact.parentId) ?? 0) + 1));
-      const maxLevel = Math.max(1, ...Array.from(levels.values()));
-      const grouped = Array.from({ length: maxLevel }, (_, level) => shownFacts.filter((fact) => levels.get(fact.id) === level + 1));
-      const positions = new Map<string, { x: number; y: number; w: number; h: number }>([[DAMAGE_ID, { x: 4.45, y: 1.62, w: 4.45, h: 0.82 }]]);
-      grouped.forEach((group, levelIndex) => {
-        const available = 11.95;
-        const gap = 0.18;
-        const width = Math.min(3.35, (available - gap * Math.max(0, group.length - 1)) / Math.max(1, group.length));
-        const start = 0.68 + (available - (group.length * width + Math.max(0, group.length - 1) * gap)) / 2;
-        group.forEach((fact, index) => positions.set(fact.id, { x: start + index * (width + gap), y: 2.95 + levelIndex * 1.15, w: width, h: 0.78 }));
+      const fallbackGraph = buildInitialGraph(usableFacts, data.harmfulEvent);
+      const shownIds = new Set([DAMAGE_ID, ...usableFacts.slice(0, 12).map((fact) => fact.id)]);
+      const exportNodes = (graphNodes.length ? graphNodes : fallbackGraph.nodes).filter((node) => shownIds.has(node.id));
+      const exportEdges = (graphEdges.length ? graphEdges : fallbackGraph.edges).filter((edge) => shownIds.has(edge.source) && shownIds.has(edge.target));
+      const minX = Math.min(...exportNodes.map((node) => node.position.x));
+      const maxX = Math.max(...exportNodes.map((node) => node.position.x));
+      const minY = Math.min(...exportNodes.map((node) => node.position.y));
+      const maxY = Math.max(...exportNodes.map((node) => node.position.y));
+      const rangeX = Math.max(1, maxX - minX);
+      const rangeY = Math.max(1, maxY - minY);
+      const positions = new Map(exportNodes.map((node) => {
+        const ultimate = node.id === DAMAGE_ID;
+        const w = ultimate ? 2.35 : 1.9;
+        const h = ultimate ? 0.9 : 0.78;
+        return [node.id, {
+          x: 0.68 + ((node.position.x - minX) / rangeX) * (11.92 - w),
+          y: 1.65 + ((node.position.y - minY) / rangeY) * (4.55 - h),
+          w,
+          h,
+        }] as const;
+      }));
+      exportEdges.forEach((edge) => {
+        const source = positions.get(edge.source);
+        const target = positions.get(edge.target);
+        if (!source || !target) return;
+        tree.addShape(pptx.ShapeType.line, { x: source.x + source.w, y: source.y + source.h / 2, w: target.x - (source.x + source.w), h: target.y + target.h / 2 - (source.y + source.h / 2), line: { color: '84978F', width: 1.15, beginArrowType: 'none', endArrowType: 'triangle' } });
       });
-      shownFacts.forEach((fact) => {
-        const pos = positions.get(fact.id);
-        const parent = positions.get(fact.parentId) || positions.get(DAMAGE_ID);
-        if (!pos || !parent) return;
-        tree.addShape(pptx.ShapeType.line, { x: pos.x + pos.w / 2, y: pos.y, w: parent.x + parent.w / 2 - (pos.x + pos.w / 2), h: parent.y + parent.h - pos.y, line: { color: '84978F', width: 1.15, beginArrowType: 'none', endArrowType: 'triangle' } });
-      });
-      shownFacts.forEach((fact) => {
-        const pos = positions.get(fact.id);
+      exportNodes.forEach((node) => {
+        const pos = positions.get(node.id);
         if (!pos) return;
+        if (node.id === DAMAGE_ID) {
+          tree.addText(`FAIT ULTIME\n${short(data.harmfulEvent, 150)}`, { ...pos, fontSize: 11.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'mid', fill: { color: 'A43D31' }, line: { color: 'A43D31' }, margin: 0.08, fit: 'shrink' });
+          return;
+        }
+        const fact = usableFacts.find((item) => item.id === node.id);
+        if (!fact) return;
         const fill = fact.nodeType === 'Fait de base' ? 'DDF0DF' : fact.nodeType === 'Fait permanent' ? 'DCEAF6' : 'FFF2BF';
         const line = fact.nodeType === 'Fait de base' ? '4D8B55' : fact.nodeType === 'Fait permanent' ? '3672A8' : 'C99B24';
         tree.addText(short(fact.description, 95), { ...pos, fontSize: 9.5, bold: fact.actionable, color: '243C33', align: 'center', valign: 'mid', fill: { color: fill }, line: { color: line, width: fact.actionable ? 1.7 : 1 }, margin: 0.06, fit: 'shrink' });
@@ -396,7 +524,7 @@ export default function InvestigationWorkshop() {
         {step === 4 && <div className="investigation-stage">
           <div className="investigation-grid two-panels">
             <div className="investigation-panel"><h3>Conséquences</h3><label>Type<select value={data.consequenceType} onChange={(event) => updateData('consequenceType', event.target.value)}><option>Incident matériel sans blessé</option><option>Accident déclaré sans arrêt</option><option>Accident déclaré avec arrêt</option><option>Incapacité permanente</option><option>Décès</option></select></label><label>Nombre de jours d’arrêt<input inputMode="numeric" value={data.daysOff} onChange={(event) => updateData('daysOff', event.target.value)} /></label><label>Partie du corps atteinte<input value={data.injuryLocation} onChange={(event) => updateData('injuryLocation', event.target.value)} /></label><label>Nature de la lésion<input value={data.injuryNature} onChange={(event) => updateData('injuryNature', event.target.value)} /></label></div>
-            <div className="investigation-panel"><h3>Reconstitution</h3><p className="panel-copy">Écrivez uniquement ce qui peut être observé ou vérifié. Remplacez « il n’a pas fait attention » par une description précise du geste et de la situation.</p><label>Récit chronologique<textarea rows={10} value={data.narrative} onChange={(event) => updateData('narrative', event.target.value)} placeholder="De la situation normale jusqu’aux conséquences…" /></label><label>Fait dommageable<textarea rows={3} value={data.harmfulEvent} onChange={(event) => updateData('harmfulEvent', event.target.value)} placeholder="Contact, chute, exposition ou mouvement ayant produit le dommage…" /></label></div>
+            <div className="investigation-panel"><h3>Reconstitution</h3><p className="panel-copy">Écrivez uniquement ce qui peut être observé ou vérifié. Remplacez « il n’a pas fait attention » par une description précise du geste et de la situation.</p><label>Récit chronologique<textarea rows={10} value={data.narrative} onChange={(event) => updateData('narrative', event.target.value)} placeholder="De la situation normale jusqu’aux conséquences…" /></label><label>Fait ultime<textarea rows={3} value={data.harmfulEvent} onChange={(event) => updateData('harmfulEvent', event.target.value)} placeholder="Dernier fait de l’enchaînement : contact, chute, exposition ou mouvement ayant produit le dommage…" /></label></div>
           </div>
           <div className="investigation-panel">
             <div className="panel-heading"><div><h3>Liste des faits établis</h3><p>Ajoutez les faits à rebours du dommage : causes directes d’abord, puis antécédents.</p></div><button type="button" onClick={() => setFacts((current) => [...current, blankFact()])}>+ Ajouter un fait</button></div>
@@ -406,13 +534,8 @@ export default function InvestigationWorkshop() {
         </div>}
 
         {step === 5 && <div className="investigation-stage">
-          <div className="tree-instructions"><div><strong>Question à poser pour chaque lien</strong><p>« Pour que ce fait arrive, qu’a-t-il fallu ? » Reliez chaque cause au fait qu’elle explique. Plusieurs causes peuvent être nécessaires ensemble.</p></div><span>{usableFacts.length} fait(s) · {rootCauses.length} levier(s)</span></div>
-          <div className="investigation-panel relation-panel">
-            <div className="harmful-node"><small>Fait dommageable</small><strong>{data.harmfulEvent || 'À renseigner à l’étape 4'}</strong></div>
-            {!usableFacts.length && <p className="empty-tree">Ajoutez au moins un fait à l’étape précédente pour construire l’arbre.</p>}
-            {usableFacts.map((fact, index) => <div className="relation-row" key={fact.id}><span className={`nature-dot ${fact.nature.toLowerCase()}`}>{fact.nature.charAt(0)}</span><div><strong>{fact.description}</strong><small>{fact.nodeType}{fact.actionable ? ' · actionnable' : ''}</small></div><label>Ce fait était nécessaire pour<select value={fact.parentId} onChange={(event) => updateFact(fact.id, 'parentId', event.target.value)}><option value={DAMAGE_ID}>Le fait dommageable</option>{usableFacts.slice(0, index).map((candidate, candidateIndex) => <option value={candidate.id} key={candidate.id}>Fait {candidateIndex + 1} · {short(candidate.description, 55)}</option>)}</select></label></div>)}
-          </div>
-          <CauseTree facts={usableFacts} harmfulEvent={data.harmfulEvent} />
+          <div className="tree-instructions"><div><strong>Construisez l’arbre directement à la souris</strong><p>Déplacez chaque fait sur la gauche. Tirez depuis le point droit d’une cause vers le point gauche du fait qu’elle explique. Sélectionnez une liaison pour la supprimer ou déplacez son extrémité pour la reconnecter.</p></div><span>{usableFacts.length} fait(s) · {graphEdges.length} liaison(s)</span></div>
+          <CauseGraphEditor nodes={graphNodes} edges={graphEdges} setNodes={setGraphNodes} setEdges={setGraphEdges} facts={usableFacts} ultimateLabel={data.harmfulEvent} />
           <div className="report-action-panel investigation-report-panel"><div><p className="eyebrow">Rapport de séance</p><h3>Votre enquête au format PowerPoint</h3><p>Le fichier reprend le cadrage, le travail réel, le récit, les faits, l’arbre des causes et les causes racines à examiner. Tous les éléments restent modifiables dans PowerPoint.</p></div><button className="button" type="button" disabled={isExporting} onClick={downloadPowerPoint}>{isExporting ? 'Préparation du fichier…' : 'Télécharger le rapport .pptx'}</button></div>
           <StageActions step={step} setStep={setStep} />
         </div>}
@@ -425,11 +548,129 @@ function StageActions({ step, setStep }: { step: number; setStep: (step: number)
   return <div className="investigation-stage-actions"><button type="button" className="text-button" disabled={step === 1} onClick={() => setStep(Math.max(1, step - 1))}>← Étape précédente</button>{step < 5 && <button type="button" className="button" onClick={() => setStep(Math.min(5, step + 1))}>Continuer</button>}</div>;
 }
 
-function CauseTree({ facts, harmfulEvent }: { facts: Fact[]; harmfulEvent: string }) {
-  const renderChildren = (parentId: string, depth = 0): React.ReactNode => {
-    const children = facts.filter((fact) => fact.parentId === parentId);
-    if (!children.length) return null;
-    return <div className="cause-branches">{children.map((fact) => <div className="cause-branch" key={fact.id}><div className={`cause-node ${fact.nodeType.toLowerCase().replaceAll(' ', '-')} ${fact.actionable ? 'actionable' : ''}`}><small>{fact.nature} · {fact.nodeType}</small><strong>{fact.description}</strong>{fact.actionable && <span>Levier de prévention</span>}</div>{depth < 8 && renderChildren(fact.id, depth + 1)}</div>)}</div>;
+function CauseFactNode({ id, data, selected }: NodeProps<CauseFlowNode>) {
+  const className = [
+    'cause-flow-node',
+    data.ultimate ? 'ultimate' : data.nodeType?.toLowerCase().replaceAll(' ', '-'),
+    data.actionable ? 'actionable' : '',
+    selected ? 'selected' : '',
+  ].filter(Boolean).join(' ');
+
+  return <div className={className} data-testid={`cause-node-${id}`}>
+    <Handle type="target" position={Position.Left} id="target" className="cause-flow-handle target" title="Relier une cause à ce fait" />
+    <small>{data.ultimate ? 'Fait ultime' : `${data.nature} · ${data.nodeType}`}</small>
+    <strong>{data.label}</strong>
+    {data.actionable && <span>Levier de prévention</span>}
+    {!data.ultimate && <Handle type="source" position={Position.Right} id="source" className="cause-flow-handle source" title="Créer ou déplacer une liaison" />}
+  </div>;
+}
+
+const causeNodeTypes = { causeFact: CauseFactNode };
+
+function CauseGraphEditor({ nodes, edges, setNodes, setEdges, facts, ultimateLabel }: {
+  nodes: CauseFlowNode[];
+  edges: Edge[];
+  setNodes: Dispatch<SetStateAction<CauseFlowNode[]>>;
+  setEdges: Dispatch<SetStateAction<Edge[]>>;
+  facts: Fact[];
+  ultimateLabel: string;
+}) {
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+
+  const onNodesChange = useCallback((changes: NodeChange<CauseFlowNode>[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+  }, [setNodes]);
+
+  const onEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
+    const removedIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
+    if (selectedEdgeId && removedIds.has(selectedEdgeId)) setSelectedEdgeId(null);
+    setEdges((current) => applyEdgeChanges(changes, current));
+  }, [selectedEdgeId, setEdges]);
+
+  const isValidConnection = useCallback((connection: Connection | Edge) => {
+    if (!connection.source || !connection.target) return false;
+    if (connection.source === DAMAGE_ID || connection.source === connection.target) return false;
+    return true;
+  }, []);
+
+  const onConnect = useCallback((connection: Connection) => {
+    if (!isValidConnection(connection) || !connection.source || !connection.target) return;
+    setEdges((current) => addEdge(flowEdge(connection.source!, connection.target!, `edge-${makeId()}`), current));
+  }, [isValidConnection, setEdges]);
+
+  const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
+    if (!isValidConnection(connection)) return;
+    setEdges((current) => reconnectEdge(oldEdge, connection, current));
+  }, [isValidConnection, setEdges]);
+
+  const removeSelectedEdge = () => {
+    if (!selectedEdgeId) return;
+    setEdges((current) => current.filter((edge) => edge.id !== selectedEdgeId));
+    setSelectedEdgeId(null);
   };
-  return <div className="cause-tree"><div className="cause-tree-heading"><div><p className="eyebrow">Résultat de l’atelier</p><h3>Arbre des causes</h3></div><div className="tree-legend"><span className="variable">Variable</span><span className="permanent">Permanent</span><span className="base">Fait de base</span></div></div><div className="cause-tree-canvas"><div className="cause-node damage"><small>Fait dommageable</small><strong>{harmfulEvent || 'Fait dommageable à préciser'}</strong></div>{renderChildren(DAMAGE_ID)}</div></div>;
+
+  const arrangeGraph = () => {
+    const outgoing = new Map<string, string>();
+    edges.forEach((edge) => outgoing.set(edge.source, edge.target));
+    const depthOf = (id: string, seen = new Set<string>()): number => {
+      const target = outgoing.get(id);
+      if (!target || target === DAMAGE_ID || seen.has(target)) return 1;
+      return 1 + depthOf(target, new Set([...seen, id]));
+    };
+    const groups = new Map<number, string[]>();
+    facts.forEach((fact) => {
+      const depth = depthOf(fact.id);
+      groups.set(depth, [...(groups.get(depth) || []), fact.id]);
+    });
+    setNodes((current) => current.map((node) => {
+      if (node.id === DAMAGE_ID) return { ...node, position: { x: 960, y: Math.max(100, (Math.max(1, ...Array.from(groups.values(), (group) => group.length)) - 1) * 75) } };
+      const depth = depthOf(node.id);
+      const group = groups.get(depth) || [];
+      return { ...node, position: { x: 920 - depth * 310, y: 70 + Math.max(0, group.indexOf(node.id)) * 150 } };
+    }));
+  };
+
+  return <section className="cause-flow-shell" aria-label="Éditeur interactif de l’arbre des causes">
+    <div className="cause-flow-heading">
+      <div><p className="eyebrow">Résultat de l’atelier</p><h3>Arbre des causes</h3></div>
+      <div className="cause-flow-actions">
+        <button type="button" onClick={arrangeGraph}>Ranger l’arbre</button>
+        <button type="button" className="danger" disabled={!selectedEdgeId} onClick={removeSelectedEdge}>Supprimer la liaison</button>
+      </div>
+    </div>
+    <div className="cause-flow-legend">
+      <span><i className="handle-demo source" />Départ de la liaison</span>
+      <span><i className="handle-demo target" />Arrivée de la liaison</span>
+      <span>Cliquez une ligne puis déplacez son extrémité pour la reconnecter.</span>
+    </div>
+    <div className="cause-flow-canvas" data-testid="cause-flow-canvas">
+      {!facts.length && <div className="cause-flow-empty">Ajoutez des faits à l’étape précédente. Le fait ultime restera placé à droite.</div>}
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={causeNodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onReconnect={onReconnect}
+        isValidConnection={isValidConnection}
+        onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
+        onPaneClick={() => setSelectedEdgeId(null)}
+        nodesDeletable={false}
+        edgesReconnectable
+        deleteKeyCode={['Backspace', 'Delete']}
+        connectionRadius={28}
+        fitView
+        fitViewOptions={{ padding: 0.22, maxZoom: 1 }}
+        minZoom={0.28}
+        maxZoom={1.65}
+        defaultEdgeOptions={{ type: 'smoothstep', markerEnd: { type: MarkerType.ArrowClosed } }}
+        connectionLineStyle={{ stroke: '#176f52', strokeWidth: 2 }}
+      >
+        <Background color="#cbd6d0" gap={24} size={1} />
+        <Controls position="bottom-left" showInteractive={false} />
+      </ReactFlow>
+    </div>
+    <div className="cause-flow-status"><strong>Fait ultime à droite :</strong> {ultimateLabel.trim() || 'à renseigner à l’étape 4'}<span>Les positions et les liaisons sont enregistrées automatiquement.</span></div>
+  </section>;
 }
