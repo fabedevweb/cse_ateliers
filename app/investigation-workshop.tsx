@@ -22,11 +22,25 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 
-type EventType = 'Accident du travail' | 'Accident de trajet' | 'Maladie professionnelle' | 'Presqu’accident';
+import {
+  consequenceTypes,
+  epiOptions,
+  eventTypes,
+  externalHelpOptions,
+  fixedTrainings,
+  injuryOptions,
+  itamamiLetters,
+  nuisanceOptions,
+  scheduleOptions,
+  steps,
+  type EventType,
+} from './investigation-data';
+
 type CauseNature = 'Humaine' | 'Organisationnelle' | 'Technique';
 type NodeType = 'Fait variable' | 'Fait permanent' | 'Fait de base';
 
 type Witness = { id: string; name: string; role: string; statement: string };
+type ExtraTraining = { id: string; name: string; date: string };
 type Fact = {
   id: string;
   description: string;
@@ -47,68 +61,108 @@ type CauseNodeData = {
 type CauseFlowNode = Node<CauseNodeData, 'causeFact'>;
 
 type InvestigationData = {
+  // 01 — cadrer
   eventType: EventType;
   company: string;
+  site: string;
   accidentDate: string;
   accidentTime: string;
   investigators: string;
   cseInvestigation: boolean;
+  sstIntervened: boolean;
   firstAidBy: string;
   firstAid: string;
+  benignRegister: boolean;
+  externalHelpKinds: string[];
   externalHelp: string;
+  // 02 — individu (I)
   victimName: string;
+  victimFirstName: string;
   victimAge: string;
+  victimSex: string;
   victimJob: string;
   victimPosition: string;
   victimTenure: string;
-  victimSchedule: string;
+  victimCompanyEntry: string;
+  victimUnit: string;
+  schedules: string[];
+  trainings: Record<string, string>;
+  extraTrainings: ExtraTraining[];
   victimTraining: string;
   lastMedicalVisit: string;
+  // 03 — tâche (T/A)
   usualTask: string;
+  // 04 — matériel (Ma)
   equipment: string;
   products: string;
+  materials: string;
   fdsChecked: string;
   epis: string[];
   otherEpi: string;
   collectiveProtection: string;
+  // 05 — milieu (Mi)
   sector: string;
   subSector: string;
   usualWorkstation: boolean;
   floorCondition: string;
   cluttered: boolean;
   levelDifferences: boolean;
+  nuisanceKinds: string[];
   nuisances: string;
   lightingOk: boolean;
+  tripFrom: string;
+  tripTo: string;
+  tripReason: string;
+  // 06 — conséquences
   consequenceType: string;
   daysOff: string;
   injuryLocation: string;
+  injuryTypes: string[];
   injuryNature: string;
+  // 07 — récit
   narrative: string;
   harmfulEvent: string;
 };
 
-const STORAGE_KEY = 'cse-enquete-atmp-v1';
+const STORAGE_KEY = 'cse-enquete-atmp-v2';
+const LEGACY_STORAGE_KEY = 'cse-enquete-atmp-v1';
 const DAMAGE_ID = 'fait-dommageable';
+const TOTAL_STEPS = steps.length;
+
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 const blankWitness = (): Witness => ({ id: makeId(), name: '', role: '', statement: '' });
 const blankFact = (): Fact => ({ id: makeId(), description: '', nature: 'Organisationnelle', nodeType: 'Fait variable', actionable: false, parentId: DAMAGE_ID });
 
 const initialData: InvestigationData = {
-  eventType: 'Accident du travail', company: '', accidentDate: '', accidentTime: '', investigators: '', cseInvestigation: true,
-  firstAidBy: '', firstAid: '', externalHelp: '', victimName: '', victimAge: '', victimJob: '', victimPosition: '', victimTenure: '', victimSchedule: 'Journée', victimTraining: '', lastMedicalVisit: '',
-  usualTask: '', equipment: '', products: '', fdsChecked: 'Non concerné', epis: [], otherEpi: '', collectiveProtection: '',
-  sector: '', subSector: '', usualWorkstation: true, floorCondition: '', cluttered: false, levelDifferences: false, nuisances: '', lightingOk: true,
-  consequenceType: 'Accident déclaré sans arrêt', daysOff: '', injuryLocation: '', injuryNature: '', narrative: '', harmfulEvent: '',
+  eventType: 'Accident du travail', company: '', site: '', accidentDate: '', accidentTime: '', investigators: '', cseInvestigation: true,
+  sstIntervened: false, firstAidBy: '', firstAid: '', benignRegister: false, externalHelpKinds: [], externalHelp: '',
+  victimName: '', victimFirstName: '', victimAge: '', victimSex: '', victimJob: '', victimPosition: '', victimTenure: '', victimCompanyEntry: '', victimUnit: '',
+  schedules: ['Journée'], trainings: {}, extraTrainings: [], victimTraining: '', lastMedicalVisit: '',
+  usualTask: '',
+  equipment: '', products: '', materials: '', fdsChecked: 'Non concerné', epis: [], otherEpi: '', collectiveProtection: '',
+  sector: '', subSector: '', usualWorkstation: true, floorCondition: '', cluttered: false, levelDifferences: false, nuisanceKinds: [], nuisances: '', lightingOk: true,
+  tripFrom: '', tripTo: '', tripReason: '',
+  consequenceType: 'Accident déclaré sans arrêt', daysOff: '', injuryLocation: '', injuryTypes: [], injuryNature: '',
+  narrative: '', harmfulEvent: '',
 };
 
 const exampleData: InvestigationData = {
-  eventType: 'Accident du travail', company: 'Imprimerie Horizon', accidentDate: '2026-03-12', accidentTime: '10:20', investigators: 'Lina Morel, élue CSE\nMarc Roy, responsable production', cseInvestigation: true,
-  firstAidBy: 'Sauveteur secouriste du travail de l’atelier', firstAid: 'Nettoyage de la plaie, pansement compressif puis mise au repos.', externalHelp: 'Consultation aux urgences organisée par l’entreprise.',
-  victimName: 'Camille Martin', victimAge: '34', victimJob: 'Conductrice de ligne', victimPosition: 'Massicot industriel M4', victimTenure: '8 mois au poste', victimSchedule: 'Matin', victimTraining: 'Accueil sécurité et formation au poste il y a 7 mois.', lastMedicalVisit: '2025-11-18',
+  eventType: 'Accident du travail', company: 'Imprimerie Horizon', site: 'Atelier de façonnage — site de Bègles', accidentDate: '2026-03-12', accidentTime: '10:20',
+  investigators: 'Lina Morel, élue CSE\nMarc Roy, responsable production', cseInvestigation: true,
+  sstIntervened: true, firstAidBy: 'Sauveteur secouriste du travail de l’atelier', firstAid: 'Nettoyage de la plaie, pansement compressif puis mise au repos.',
+  benignRegister: false, externalHelpKinds: ['Hôpital / CHU / Clinique'], externalHelp: 'Consultation aux urgences organisée par l’entreprise.',
+  victimName: 'Martin', victimFirstName: 'Camille', victimAge: '34', victimSex: 'Femme', victimJob: 'Conductrice de ligne', victimPosition: 'Massicot industriel M4',
+  victimTenure: '8 mois au poste', victimCompanyEntry: '2021-09-06', victimUnit: 'Façonnage', schedules: ['Matin'],
+  trainings: { 'Formation au poste de travail': '2025-08-04' },
+  extraTrainings: [{ id: 'ex-t1', name: 'Accueil sécurité', date: '2021-09-06' }],
+  victimTraining: 'Habilitée à la conduite du massicot depuis sa formation au poste.', lastMedicalVisit: '2025-11-18',
   usualTask: 'Régler le massicot, positionner les piles de papier, lancer la coupe puis évacuer les formats. Le nettoyage des chutes se fait normalement machine arrêtée, outil consigné et carter fermé.',
-  equipment: 'Massicot M4, poussoir arrière et bac de récupération des chutes.', products: '', fdsChecked: 'Non concerné', epis: ['Chaussures de sécurité', 'Gants anti-coupure'], otherEpi: '', collectiveProtection: 'Carter mobile avec interverrouillage.',
-  sector: 'Atelier de façonnage', subSector: 'Ligne M4', usualWorkstation: true, floorCondition: 'Sol sec et dégagé.', cluttered: false, levelDifferences: false, nuisances: 'Bruit ambiant et cadence élevée en fin de série.', lightingOk: true,
-  consequenceType: 'Accident déclaré avec arrêt', daysOff: '12', injuryLocation: 'Index de la main gauche', injuryNature: 'Plaie profonde',
+  equipment: 'Massicot M4, poussoir arrière et bac de récupération des chutes.', products: '', materials: 'Piles de papier 70 g, format raisin.',
+  fdsChecked: 'Non concerné', epis: ['Chaussures de sécurité', 'Gants anti-coupure'], otherEpi: '', collectiveProtection: 'Carter mobile avec interverrouillage.',
+  sector: 'Atelier de façonnage', subSector: 'Ligne M4', usualWorkstation: true, floorCondition: 'Sol sec et dégagé.', cluttered: false, levelDifferences: false,
+  nuisanceKinds: ['Bruit'], nuisances: 'Bruit ambiant et cadence élevée en fin de série.', lightingOk: true, tripFrom: '', tripTo: '', tripReason: '',
+  consequenceType: 'Accident déclaré avec arrêt', daysOff: '12', injuryLocation: 'Index de la main gauche',
+  injuryTypes: ['Plaie profonde'], injuryNature: 'Plaie profonde avec atteinte tendineuse suspectée.',
   narrative: 'À 10 h 20, une chute de papier reste coincée près de la lame. La production accuse du retard. Camille ouvre le carter et retire la chute sans couper l’alimentation générale. Le poussoir se remet en mouvement pendant que sa main se trouve dans la zone dangereuse. Son index heurte une arête métallique.',
   harmfulEvent: 'L’index gauche heurte une arête du massicot en mouvement, provoquant une plaie profonde.',
 };
@@ -122,17 +176,9 @@ const exampleFacts: Fact[] = [
   { id: 'ex-6', description: 'Le retard de production conduit l’équipe à écourter les arrêts de ligne.', nature: 'Organisationnelle', nodeType: 'Fait permanent', actionable: true, parentId: 'ex-3' },
 ];
 
-const epiOptions = ['Gants anti-coupure', 'Lunettes', 'Chaussures de sécurité', 'Vêtements de travail', 'Casque', 'Harnais', 'Protection auditive'];
-const steps = [
-  ['01', 'Cadrer', 'Événement et équipe'],
-  ['02', 'Recueillir', 'Victime et témoins'],
-  ['03', 'Décrire', 'Travail réel'],
-  ['04', 'Établir', 'Récit et faits'],
-  ['05', 'Relier', 'Arbre des causes'],
-];
-
 const formatDate = (value: string) => value ? new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long' }).format(new Date(`${value}T12:00:00`)) : 'Non renseignée';
 const short = (value: string, max = 160) => value.trim().length > max ? `${value.trim().slice(0, max - 1)}…` : value.trim() || 'Non renseigné';
+const listOrNone = (values: string[], extra = '') => [...values, extra].filter(Boolean).join(', ') || 'Non renseigné';
 
 const flowEdge = (source: string, target: string, id = `edge-${source}-${target}`): Edge => ({
   id,
@@ -166,6 +212,7 @@ const buildInitialGraph = (facts: Fact[], ultimateLabel: string) => {
       type: 'causeFact',
       position: { x: 920 - level * 310, y: 70 + index * 150 },
       data: { label: fact.description, nature: fact.nature, nodeType: fact.nodeType, actionable: fact.actionable },
+      deletable: false,
     };
   });
   nodes.push({
@@ -182,6 +229,24 @@ const buildInitialGraph = (facts: Fact[], ultimateLabel: string) => {
   };
 };
 
+// Première structure proposée, comme dans le cockpit CSE : une branche par
+// nature de fait (humaine, organisationnelle, technique), chaque fait d'une
+// branche menant au suivant puis au fait ultime. C'est un point de départ à
+// discuter, pas une conclusion — le groupe reprend ensuite chaque liaison à
+// la souris.
+const chainFactsByNature = (facts: Fact[]): Fact[] => {
+  const usable = facts.filter((fact) => fact.description.trim());
+  const byNature = new Map<CauseNature, Fact[]>();
+  usable.forEach((fact) => byNature.set(fact.nature, [...(byNature.get(fact.nature) || []), fact]));
+  const parents = new Map<string, string>();
+  byNature.forEach((chain) => {
+    chain.forEach((fact, index) => {
+      parents.set(fact.id, index < chain.length - 1 ? chain[index + 1].id : DAMAGE_ID);
+    });
+  });
+  return facts.map((fact) => (parents.has(fact.id) ? { ...fact, parentId: parents.get(fact.id) as string } : fact));
+};
+
 export default function InvestigationWorkshop() {
   const [step, setStep] = useState(1);
   const [data, setData] = useState<InvestigationData>(initialData);
@@ -193,13 +258,31 @@ export default function InvestigationWorkshop() {
   const [hydrated, setHydrated] = useState(false);
   const [savedLabel, setSavedLabel] = useState('Sauvegarde locale active');
   const [isExporting, setIsExporting] = useState(false);
+  const [extraTrainingName, setExtraTrainingName] = useState('');
+  const [extraTrainingDate, setExtraTrainingDate] = useState('');
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as { data?: InvestigationData; witnesses?: Witness[]; facts?: Fact[]; graphNodes?: CauseFlowNode[]; graphEdges?: Edge[]; step?: number };
-        if (parsed.data) setData({ ...initialData, ...parsed.data });
+        const parsed = JSON.parse(saved) as {
+          data?: Partial<InvestigationData> & { victimSchedule?: string };
+          witnesses?: Witness[];
+          facts?: Fact[];
+          graphNodes?: CauseFlowNode[];
+          graphEdges?: Edge[];
+          step?: number;
+        };
+        if (parsed.data) {
+          // Les brouillons de la première version ne connaissaient qu'un
+          // horaire unique ; il devient une case cochée parmi d'autres.
+          const { victimSchedule, ...rest } = parsed.data;
+          setData({
+            ...initialData,
+            ...rest,
+            schedules: rest.schedules?.length ? rest.schedules : victimSchedule ? [victimSchedule] : initialData.schedules,
+          });
+        }
         if (parsed.witnesses?.length) setWitnesses(parsed.witnesses);
         if (parsed.facts?.length) setFacts(parsed.facts);
         if (Array.isArray(parsed.graphNodes)) {
@@ -207,7 +290,7 @@ export default function InvestigationWorkshop() {
           setGraphSeeded(true);
         }
         if (Array.isArray(parsed.graphEdges)) setGraphEdges(parsed.graphEdges);
-        if (parsed.step && parsed.step >= 1 && parsed.step <= 5) setStep(parsed.step);
+        if (parsed.step && parsed.step >= 1 && parsed.step <= TOTAL_STEPS) setStep(parsed.step);
       }
     } catch {
       setSavedLabel('Sauvegarde indisponible');
@@ -221,6 +304,7 @@ export default function InvestigationWorkshop() {
     const timer = window.setTimeout(() => {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, witnesses, facts, graphNodes, graphEdges, step }));
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
         setSavedLabel('Enregistré sur cet appareil');
       } catch {
         setSavedLabel('Sauvegarde indisponible');
@@ -232,7 +316,11 @@ export default function InvestigationWorkshop() {
   const usableWitnesses = useMemo(() => witnesses.filter((item) => item.name.trim() || item.statement.trim()), [witnesses]);
   const usableFacts = useMemo(() => facts.filter((item) => item.description.trim()), [facts]);
   const rootCauses = useMemo(() => usableFacts.filter((item) => item.actionable || item.nodeType === 'Fait de base'), [usableFacts]);
-  const completion = useMemo(() => [data.company, data.accidentDate, data.victimName, data.victimPosition, data.usualTask, data.narrative, data.harmfulEvent, usableFacts.length ? 'faits' : ''].filter(Boolean).length, [data, usableFacts]);
+  const completion = useMemo(
+    () => [data.company, data.accidentDate, data.victimName || data.victimFirstName, data.victimPosition, data.usualTask, data.sector, data.narrative, data.harmfulEvent, usableFacts.length ? 'faits' : '']
+      .filter(Boolean).length,
+    [data, usableFacts],
+  );
 
   useEffect(() => {
     if (!hydrated) return;
@@ -255,6 +343,8 @@ export default function InvestigationWorkshop() {
   }, [data.harmfulEvent, graphSeeded, hydrated, usableFacts]);
 
   const updateData = <K extends keyof InvestigationData>(key: K, value: InvestigationData[K]) => setData((current) => ({ ...current, [key]: value }));
+  const toggleIn = (key: 'epis' | 'externalHelpKinds' | 'nuisanceKinds' | 'injuryTypes' | 'schedules', value: string) =>
+    setData((current) => ({ ...current, [key]: current[key].includes(value) ? current[key].filter((item) => item !== value) : [...current[key], value] }));
   const updateWitness = (id: string, key: keyof Witness, value: string) => setWitnesses((current) => current.map((item) => item.id === id ? { ...item, [key]: value } : item));
   const updateFact = <K extends keyof Fact>(id: string, key: K, value: Fact[K]) => setFacts((current) => current.map((item) => item.id === id ? { ...item, [key]: value } : item));
   const removeFact = (id: string) => {
@@ -262,7 +352,28 @@ export default function InvestigationWorkshop() {
     setGraphNodes((current) => current.filter((node) => node.id !== id));
     setGraphEdges((current) => current.filter((edge) => edge.source !== id && edge.target !== id));
   };
-  const toggleEpi = (value: string) => updateData('epis', data.epis.includes(value) ? data.epis.filter((item) => item !== value) : [...data.epis, value]);
+
+  const addExtraTraining = () => {
+    const name = extraTrainingName.trim();
+    if (!name) return;
+    updateData('extraTrainings', [...data.extraTrainings, { id: makeId(), name, date: extraTrainingDate }]);
+    setExtraTrainingName('');
+    setExtraTrainingDate('');
+  };
+
+  // Reconstruit les liaisons à partir de la nature des faits et repose les
+  // bulles : la disposition ajustée à la main est remplacée, d'où la
+  // confirmation.
+  const proposeStructure = () => {
+    if (!usableFacts.length) return;
+    if (graphEdges.length && !window.confirm('Proposer une première structure ? Les liaisons et la disposition que vous avez ajustées seront remplacées.')) return;
+    const chained = chainFactsByNature(facts);
+    setFacts(chained);
+    const proposal = buildInitialGraph(chained, data.harmfulEvent);
+    setGraphNodes(proposal.nodes);
+    setGraphEdges(proposal.edges);
+    setGraphSeeded(true);
+  };
 
   const loadExample = () => {
     setData(exampleData);
@@ -285,6 +396,7 @@ export default function InvestigationWorkshop() {
     setGraphSeeded(true);
     setStep(1);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
   };
 
   const downloadPowerPoint = async () => {
@@ -297,8 +409,7 @@ export default function InvestigationWorkshop() {
       pptx.subject = 'Rapport d’enquête après un accident du travail ou une maladie professionnelle';
       pptx.title = `Enquête ${data.eventType} — ${data.company || 'CSE'}`;
       pptx.company = data.company || 'CSE';
-      pptx.lang = 'fr-FR';
-      pptx.theme = { headFontFace: 'Aptos Display', bodyFontFace: 'Aptos', lang: 'fr-FR' };
+      pptx.theme = { headFontFace: 'Aptos Display', bodyFontFace: 'Aptos' };
       pptx.defineSlideMaster({
         title: 'REPORT',
         background: { color: 'F4F6F2' },
@@ -310,7 +421,7 @@ export default function InvestigationWorkshop() {
         slideNumber: { x: 12.78, y: 7.05, w: 0.22, h: 0.18, fontFace: 'Aptos', fontSize: 7, color: '52655D', align: 'right', margin: 0 },
       });
 
-      const addTitle = (slide: InstanceType<typeof PptxGenJS>['addSlide'] extends (...args: never[]) => infer R ? R : never, title: string, kicker: string) => {
+      const addTitle = (slide: ReturnType<typeof pptx.addSlide>, title: string, kicker: string) => {
         slide.addText(kicker.toUpperCase(), { x: 0.65, y: 0.55, w: 4.5, h: 0.26, fontSize: 8, bold: true, color: '176F52', charSpacing: 1.4, margin: 0 });
         slide.addText(title, { x: 0.65, y: 0.92, w: 11.9, h: 0.56, fontSize: 28, bold: false, color: '16342B', margin: 0, breakLine: false, fit: 'shrink' });
       };
@@ -330,31 +441,55 @@ export default function InvestigationWorkshop() {
       cover.addShape(pptx.ShapeType.ellipse, { x: 9.65, y: 1.1, w: 2.15, h: 2.15, fill: { color: 'DFF16A', transparency: 8 }, line: { color: 'DFF16A' } });
       cover.addText('CSE', { x: 9.65, y: 1.83, w: 2.15, h: 0.5, fontSize: 27, bold: true, color: '16342B', align: 'center', margin: 0 });
 
+      const method = pptx.addSlide('REPORT');
+      addTitle(method, 'La méthode suivie', '00 · Cadre de travail');
+      method.addText('L’enquête décrit le travail réel avant de chercher un responsable. Quatre familles de faits sont passées en revue, puis reliées entre elles dans l’arbre des causes.', { x: 0.65, y: 1.65, w: 11.9, h: 0.55, fontSize: 15, color: '30483F', margin: 0, breakLine: false, fit: 'shrink' });
+      itamamiLetters.forEach((letter, index) => {
+        const x = 0.65 + index * 3.05;
+        method.addShape(pptx.ShapeType.roundRect, { x, y: 2.5, w: 2.8, h: 2.35, fill: { color: 'FFFFFF' }, line: { color: 'D7DFDA' }, rectRadius: 0.06 });
+        method.addText(letter.code, { x, y: 2.75, w: 2.8, h: 0.6, align: 'center', fontSize: 30, bold: true, color: '176F52', margin: 0 });
+        method.addText(letter.label, { x, y: 3.42, w: 2.8, h: 0.34, align: 'center', fontSize: 13, bold: true, color: '16342B', margin: 0, fit: 'shrink' });
+        method.addText(letter.hint, { x: x + 0.18, y: 3.8, w: 2.44, h: 0.9, align: 'center', fontSize: 10, color: '52655D', valign: 'top', margin: 0, fit: 'shrink' });
+      });
+      method.addText(data.cseInvestigation ? 'Enquête menée par les représentants du personnel au sens de l’article L. 2312-5 du Code du travail.' : 'Enquête menée dans le cadre des travaux du CSE.', { x: 0.65, y: 5.25, w: 11.9, h: 0.4, fontSize: 11, italic: true, color: '52655D', margin: 0 });
+
       const framing = pptx.addSlide('REPORT');
       addTitle(framing, 'Cadre de l’enquête', '01 · Identification');
-      addSection(framing, 'Entreprise', data.company, 0.65, 1.85, 3.7, 1.15);
+      addSection(framing, 'Entreprise', [data.company, data.site].filter(Boolean).join('\n'), 0.65, 1.85, 3.7, 1.15);
       addSection(framing, 'Événement', `${data.eventType}\n${formatDate(data.accidentDate)}${data.accidentTime ? ` à ${data.accidentTime}` : ''}`, 4.65, 1.85, 3.8, 1.15);
       addSection(framing, 'Lieu', [data.sector, data.subSector].filter(Boolean).join(' — '), 8.75, 1.85, 3.9, 1.15);
       addSection(framing, 'Enquêteurs', data.investigators, 0.65, 3.55, 5.7, 1.85);
-      addSection(framing, 'Victime', `${data.victimName || 'Non renseignée'}\n${data.victimJob || data.victimPosition || ''}\nAncienneté : ${data.victimTenure || 'non renseignée'}`, 6.7, 3.55, 5.95, 1.85);
+      addSection(framing, 'Secours et premiers soins', `SST intervenu : ${data.sstIntervened ? data.firstAidBy || 'oui' : 'non'}\nSoins : ${data.firstAid || 'non renseignés'}\nSecours extérieurs : ${listOrNone(data.externalHelpKinds, data.externalHelp)}\nRegistre des accidents bénins : ${data.benignRegister ? 'inscrit' : 'non inscrit'}`, 6.7, 3.55, 5.95, 1.85);
+
+      const individual = pptx.addSlide('REPORT');
+      addTitle(individual, 'Qui — l’individu', '02 · I');
+      addSection(individual, 'Personne concernée', `${[data.victimFirstName, data.victimName].filter(Boolean).join(' ') || 'Non renseignée'}\n${[data.victimAge && `${data.victimAge} ans`, data.victimSex].filter(Boolean).join(' — ')}\n${data.victimJob}`, 0.65, 1.75, 3.7, 1.75);
+      addSection(individual, 'Poste et parcours', `Poste : ${data.victimPosition || 'non renseigné'}\nAncienneté au poste : ${data.victimTenure || 'non renseignée'}\nEntrée dans l’entreprise : ${formatDate(data.victimCompanyEntry)}\nUnité de travail : ${data.victimUnit || 'non renseignée'}\nHoraires : ${listOrNone(data.schedules)}`, 4.65, 1.75, 3.9, 1.75);
+      addSection(individual, 'Suivi médical', `Dernière visite : ${formatDate(data.lastMedicalVisit)}`, 8.85, 1.75, 3.8, 1.75);
+      const trainingLines = [
+        ...fixedTrainings.filter((name) => data.trainings[name]).map((name) => `${name} — ${formatDate(data.trainings[name])}`),
+        ...data.extraTrainings.filter((item) => item.name.trim()).map((item) => `${item.name} — ${item.date ? formatDate(item.date) : 'date non renseignée'}`),
+      ];
+      addSection(individual, 'Formations et compétences', trainingLines.length ? trainingLines.join('\n') : 'Aucune formation renseignée.', 0.65, 3.9, 7.9, 2.4);
+      addSection(individual, 'Précisions', data.victimTraining, 8.85, 3.9, 3.8, 2.4);
 
       const work = pptx.addSlide('REPORT');
-      addTitle(work, 'Travail réel et environnement', '02 · Recueil des faits');
+      addTitle(work, 'Travail réel, matériels et milieu', '03 · T/A · Ma · Mi');
       addSection(work, 'Tâche habituelle', data.usualTask, 0.65, 1.75, 5.8, 2.05);
-      addSection(work, 'Matériels et protections', `Équipements : ${data.equipment || 'non renseignés'}\nEPI : ${[...data.epis, data.otherEpi].filter(Boolean).join(', ') || 'non renseignés'}\nEPC : ${data.collectiveProtection || 'non renseignés'}`, 6.8, 1.75, 5.85, 2.05);
-      addSection(work, 'Milieu', `Sol : ${data.floorCondition || 'non renseigné'}\nEncombrement : ${data.cluttered ? 'oui' : 'non'}\nDifférences de niveau : ${data.levelDifferences ? 'oui' : 'non'}\nÉclairage satisfaisant : ${data.lightingOk ? 'oui' : 'non'}\nNuisances : ${data.nuisances || 'non renseignées'}`, 0.65, 4.25, 5.8, 1.65);
-      addSection(work, 'Éléments recueillis', `Témoins : ${usableWitnesses.map((item) => item.name).join(', ') || 'aucun renseigné'}\nPremiers soins : ${data.firstAid || 'non renseignés'}\nSecours extérieurs : ${data.externalHelp || 'non renseignés'}`, 6.8, 4.25, 5.85, 1.65);
+      addSection(work, 'Matériels et protections', `Équipements : ${data.equipment || 'non renseignés'}\nProduits : ${data.products || 'non renseignés'}${data.products ? ` (FDS : ${data.fdsChecked})` : ''}\nMatières : ${data.materials || 'non renseignées'}\nEPI : ${listOrNone(data.epis, data.otherEpi)}\nEPC : ${data.collectiveProtection || 'non renseignés'}`, 6.8, 1.75, 5.85, 2.05);
+      addSection(work, 'Milieu', `Sol : ${data.floorCondition || 'non renseigné'}\nEncombrement : ${data.cluttered ? 'oui' : 'non'}\nDifférences de niveau : ${data.levelDifferences ? 'oui' : 'non'}\nÉclairage satisfaisant : ${data.lightingOk ? 'oui' : 'non'}\nNuisances : ${listOrNone(data.nuisanceKinds, data.nuisances)}`, 0.65, 4.25, 5.8, 1.65);
+      addSection(work, 'Éléments recueillis', `Témoins : ${usableWitnesses.map((item) => item.name).join(', ') || 'aucun renseigné'}\nPoste habituel : ${data.usualWorkstation ? 'oui' : 'non'}\nDéplacement : ${[data.tripFrom, data.tripTo].filter(Boolean).join(' → ') || 'sans objet'}${data.tripReason ? ` (${data.tripReason})` : ''}`, 6.8, 4.25, 5.85, 1.65);
 
       const story = pptx.addSlide('REPORT');
-      addTitle(story, 'Déroulement et conséquences', '03 · Reconstitution');
+      addTitle(story, 'Déroulement et conséquences', '04 · Reconstitution');
       addSection(story, 'Récit objectif', data.narrative, 0.65, 1.7, 8.1, 3.95);
-      addSection(story, 'Conséquences', `${data.consequenceType}\n${data.daysOff ? `${data.daysOff} jour(s) d’arrêt` : ''}\n${data.injuryLocation}\n${data.injuryNature}`, 9.15, 1.7, 3.5, 1.75);
-      addSection(story, 'Fait ultime', data.harmfulEvent, 9.15, 4.0, 3.5, 1.65);
+      addSection(story, 'Conséquences', `${data.consequenceType}\n${data.daysOff ? `${data.daysOff} jour(s) d’arrêt` : ''}\n${data.injuryLocation}\n${listOrNone(data.injuryTypes)}\n${data.injuryNature}`, 9.15, 1.7, 3.5, 1.95);
+      addSection(story, 'Fait ultime', data.harmfulEvent, 9.15, 4.15, 3.5, 1.5);
 
       const factChunks = usableFacts.length ? Array.from({ length: Math.ceil(usableFacts.length / 7) }, (_, index) => usableFacts.slice(index * 7, index * 7 + 7)) : [[]];
       factChunks.forEach((chunk, chunkIndex) => {
         const slide = pptx.addSlide('REPORT');
-        addTitle(slide, `Faits établis${factChunks.length > 1 ? ` (${chunkIndex + 1}/${factChunks.length})` : ''}`, '04 · Analyse');
+        addTitle(slide, `Faits établis${factChunks.length > 1 ? ` (${chunkIndex + 1}/${factChunks.length})` : ''}`, '05 · Analyse');
         if (!chunk.length) slide.addText('Aucun fait renseigné.', { x: 0.7, y: 2, w: 11.8, h: 0.5, fontSize: 18, color: '52655D', margin: 0 });
         chunk.forEach((fact, index) => {
           const y = 1.68 + index * 0.7;
@@ -367,7 +502,7 @@ export default function InvestigationWorkshop() {
       });
 
       const tree = pptx.addSlide('REPORT');
-      addTitle(tree, 'Arbre des causes', '05 · Enchaînement causal');
+      addTitle(tree, 'Arbre des causes', '06 · Enchaînement causal');
       const fallbackGraph = buildInitialGraph(usableFacts, data.harmfulEvent);
       const shownIds = new Set([DAMAGE_ID, ...usableFacts.slice(0, 12).map((fact) => fact.id)]);
       const exportNodes = (graphNodes.length ? graphNodes : fallbackGraph.nodes).filter((node) => shownIds.has(node.id));
@@ -399,19 +534,19 @@ export default function InvestigationWorkshop() {
         const pos = positions.get(node.id);
         if (!pos) return;
         if (node.id === DAMAGE_ID) {
-          tree.addText(`FAIT ULTIME\n${short(data.harmfulEvent, 150)}`, { ...pos, fontSize: 11.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'mid', fill: { color: 'A43D31' }, line: { color: 'A43D31' }, margin: 0.08, fit: 'shrink' });
+          tree.addText(`FAIT ULTIME\n${short(data.harmfulEvent, 150)}`, { ...pos, fontSize: 11.5, bold: true, color: 'FFFFFF', align: 'center', valign: 'middle', fill: { color: 'A43D31' }, line: { color: 'A43D31' }, margin: 0.08, fit: 'shrink' });
           return;
         }
         const fact = usableFacts.find((item) => item.id === node.id);
         if (!fact) return;
         const fill = fact.nodeType === 'Fait de base' ? 'DDF0DF' : fact.nodeType === 'Fait permanent' ? 'DCEAF6' : 'FFF2BF';
         const line = fact.nodeType === 'Fait de base' ? '4D8B55' : fact.nodeType === 'Fait permanent' ? '3672A8' : 'C99B24';
-        tree.addText(short(fact.description, 95), { ...pos, fontSize: 9.5, bold: fact.actionable, color: '243C33', align: 'center', valign: 'mid', fill: { color: fill }, line: { color: line, width: fact.actionable ? 1.7 : 1 }, margin: 0.06, fit: 'shrink' });
+        tree.addText(short(fact.description, 95), { ...pos, fontSize: 9.5, bold: fact.actionable, color: '243C33', align: 'center', valign: 'middle', fill: { color: fill }, line: { color: line, width: fact.actionable ? 1.7 : 1 }, margin: 0.06, fit: 'shrink' });
       });
       tree.addText('Variable : situation inhabituelle     Permanent : condition habituelle     Fait de base : levier de prévention', { x: 0.68, y: 6.62, w: 11.9, h: 0.25, fontSize: 8, color: '52655D', align: 'center', margin: 0 });
 
       const roots = pptx.addSlide('REPORT');
-      addTitle(roots, 'Causes racines à examiner', '06 · Prévention');
+      addTitle(roots, 'Causes racines à examiner', '07 · Prévention');
       if (!rootCauses.length) {
         roots.addText('Aucune cause racine marquée comme actionnable. Reprenez l’arbre avec le groupe avant de diffuser le rapport.', { x: 0.7, y: 2, w: 11.8, h: 0.7, fontSize: 19, color: '52655D', margin: 0 });
       } else {
@@ -421,6 +556,19 @@ export default function InvestigationWorkshop() {
         });
       }
       roots.addText('L’arbre des causes constitue une hypothèse de travail. Le CSE valide les liens à partir des faits vérifiés et complète ensuite les mesures de prévention.', { x: 0.72, y: 6.3, w: 11.9, h: 0.5, fontSize: 10, italic: true, color: '52655D', margin: 0 });
+
+      const next = pptx.addSlide('REPORT');
+      addTitle(next, 'Les suites à donner', '08 · Après l’enquête');
+      [
+        'Vérifier si ce que révèle l’enquête est déjà pris en compte dans le DUERP, sur l’unité de travail concernée.',
+        'Mettre à jour la ligne du risque concerné, ou en créer une nouvelle si le risque n’y figure pas.',
+        'Proposer des mesures de prévention en remontant les neuf principes généraux de prévention.',
+        'Inscrire le suivi de ces mesures à l’ordre du jour d’une prochaine réunion du CSE.',
+      ].forEach((text, index) => {
+        next.addShape(pptx.ShapeType.ellipse, { x: 0.72, y: 1.85 + index * 0.95, w: 0.4, h: 0.4, fill: { color: 'DFF16A' }, line: { color: 'DFF16A' } });
+        next.addText(String(index + 1), { x: 0.72, y: 1.85 + index * 0.95, w: 0.4, h: 0.4, align: 'center', valign: 'middle', fontSize: 12, bold: true, color: '16342B', margin: 0 });
+        next.addText(text, { x: 1.32, y: 1.85 + index * 0.95, w: 11.3, h: 0.44, fontSize: 15, color: '243C33', valign: 'middle', margin: 0, breakLine: false, fit: 'shrink' });
+      });
 
       await pptx.writeFile({ fileName: `rapport-enquete-${(data.company || 'cse').toLowerCase().replace(/[^a-z0-9]+/gi, '-')}.pptx` });
     } catch (error) {
@@ -441,7 +589,7 @@ export default function InvestigationWorkshop() {
         <div>
           <p className="eyebrow">Atelier 07 · Enquête AT/MP</p>
           <h1>Comprendre les faits,<br />construire l’arbre.</h1>
-          <p>Un parcours inspiré de la méthode INRS pour recueillir des faits vérifiables, remonter aux causes et préparer un compte rendu collectif.</p>
+          <p>Un parcours ITAMAMI — individu, tâche, matériel, milieu — pour recueillir des faits vérifiables, remonter aux causes et préparer un compte rendu collectif.</p>
         </div>
         <aside className="investigation-hero-note">
           <span>Principe de méthode</span>
@@ -461,82 +609,192 @@ export default function InvestigationWorkshop() {
 
       <section className="investigation-workspace">
         <div className="investigation-stage-heading">
-          <div><p className="eyebrow">Étape {step} sur 5</p><h2>{steps[step - 1][1]}</h2></div>
-          <span>{completion}/8 repères essentiels renseignés</span>
+          <div><p className="eyebrow">Étape {step} sur {TOTAL_STEPS}</p><h2>{steps[step - 1][1]}</h2></div>
+          <span>{completion}/9 repères essentiels renseignés</span>
         </div>
 
         {step === 1 && <div className="investigation-stage">
           <div className="investigation-panel">
             <h3>Événement et cadre de l’enquête</h3>
-            <div className="investigation-choice-grid four">
-              {(['Accident du travail', 'Accident de trajet', 'Maladie professionnelle', 'Presqu’accident'] as EventType[]).map((value) => <button type="button" key={value} className={data.eventType === value ? 'selected' : ''} onClick={() => updateData('eventType', value)}>{value}</button>)}
+            <div className="investigation-choice-grid five">
+              {eventTypes.map((value) => <button type="button" key={value} className={data.eventType === value ? 'selected' : ''} onClick={() => updateData('eventType', value)}>{value}</button>)}
             </div>
             <div className="investigation-form-grid two">
               <label>Raison sociale<input value={data.company} onChange={(event) => updateData('company', event.target.value)} placeholder="Nom de l’entreprise" /></label>
               <label>Enquêteurs<textarea rows={3} value={data.investigators} onChange={(event) => updateData('investigators', event.target.value)} placeholder="Nom et rôle de chaque enquêteur" /></label>
               <label>Date de l’événement<input type="date" value={data.accidentDate} onChange={(event) => updateData('accidentDate', event.target.value)} /></label>
               <label>Heure<input type="time" value={data.accidentTime} onChange={(event) => updateData('accidentTime', event.target.value)} /></label>
+              <label className="wide">Site de l’événement<input value={data.site} onChange={(event) => updateData('site', event.target.value)} placeholder="Établissement, atelier, agence…" /></label>
             </div>
-            <label className="investigation-toggle"><input type="checkbox" checked={data.cseInvestigation} onChange={(event) => updateData('cseInvestigation', event.target.checked)} /><span>Les représentants du personnel participent à l’enquête</span></label>
+            <label className="investigation-toggle"><input type="checkbox" checked={data.cseInvestigation} onChange={(event) => updateData('cseInvestigation', event.target.checked)} /><span>Une enquête au sens de l’article L. 2312-5 du Code du travail est menée par les représentants du personnel</span></label>
+          </div>
+
+          <div className="investigation-panel">
+            <h3>Secours et premiers soins</h3>
+            <div className="investigation-form-grid three">
+              <label>Premiers soins donnés par<input value={data.firstAidBy} onChange={(event) => updateData('firstAidBy', event.target.value)} placeholder="Nom du SST, d’un collègue…" /></label>
+              <label>Soins réalisés<input value={data.firstAid} onChange={(event) => updateData('firstAid', event.target.value)} /></label>
+              <label>Précisions sur les secours extérieurs<input value={data.externalHelp} onChange={(event) => updateData('externalHelp', event.target.value)} /></label>
+            </div>
+            <div className="investigation-switches">
+              <label><input type="checkbox" checked={data.sstIntervened} onChange={(event) => updateData('sstIntervened', event.target.checked)} />Un sauveteur secouriste du travail (SST) est intervenu</label>
+              <label><input type="checkbox" checked={data.benignRegister} onChange={(event) => updateData('benignRegister', event.target.checked)} />Inscrit au registre de déclaration des accidents bénins</label>
+            </div>
+            <p className="field-title">Intervention de secours extérieurs</p>
+            <CheckGrid options={externalHelpOptions} selected={data.externalHelpKinds} onToggle={(value) => toggleIn('externalHelpKinds', value)} />
           </div>
           <StageActions step={step} setStep={setStep} />
         </div>}
 
         {step === 2 && <div className="investigation-stage">
+          <ItamamiBadge step={step} />
           <div className="investigation-panel">
-            <h3>Victime et situation professionnelle</h3>
+            <h3>La personne concernée</h3>
             <div className="investigation-form-grid three">
               <label>Nom ou identifiant anonymisé<input value={data.victimName} onChange={(event) => updateData('victimName', event.target.value)} placeholder="Ex. Salarié A" /></label>
+              <label>Prénom<input value={data.victimFirstName} onChange={(event) => updateData('victimFirstName', event.target.value)} /></label>
               <label>Âge<input inputMode="numeric" value={data.victimAge} onChange={(event) => updateData('victimAge', event.target.value)} placeholder="34" /></label>
+              <label>Sexe<select value={data.victimSex} onChange={(event) => updateData('victimSex', event.target.value)}><option value="">Non renseigné</option><option>Femme</option><option>Homme</option></select></label>
               <label>Profession<input value={data.victimJob} onChange={(event) => updateData('victimJob', event.target.value)} placeholder="Conductrice de ligne" /></label>
               <label>Poste au moment de l’événement<input value={data.victimPosition} onChange={(event) => updateData('victimPosition', event.target.value)} /></label>
               <label>Ancienneté au poste<input value={data.victimTenure} onChange={(event) => updateData('victimTenure', event.target.value)} placeholder="8 mois" /></label>
-              <label>Horaire<select value={data.victimSchedule} onChange={(event) => updateData('victimSchedule', event.target.value)}><option>Journée</option><option>Matin</option><option>Après-midi</option><option>Nuit</option></select></label>
-              <label className="wide">Formations et compétences<textarea rows={3} value={data.victimTraining} onChange={(event) => updateData('victimTraining', event.target.value)} placeholder="Formation au poste, habilitations, dates connues…" /></label>
+              <label>Date d’entrée dans l’entreprise<input type="date" value={data.victimCompanyEntry} onChange={(event) => updateData('victimCompanyEntry', event.target.value)} /></label>
+              <label>Unité de travail<input value={data.victimUnit} onChange={(event) => updateData('victimUnit', event.target.value)} placeholder="Ex. façonnage, accueil…" /></label>
               <label>Dernière visite médicale<input type="date" value={data.lastMedicalVisit} onChange={(event) => updateData('lastMedicalVisit', event.target.value)} /></label>
             </div>
+            <p className="field-title">Travail posté</p>
+            <CheckGrid options={scheduleOptions} selected={data.schedules} onToggle={(value) => toggleIn('schedules', value)} />
           </div>
+
           <div className="investigation-panel">
-            <div className="panel-heading"><div><h3>Témoins et secours</h3><p>Consignez des déclarations factuelles. Distinguez ce qui a été vu, entendu ou rapporté.</p></div><button type="button" onClick={() => setWitnesses((current) => [...current, blankWitness()])}>+ Ajouter un témoin</button></div>
-            <div className="witness-list">{witnesses.map((witness, index) => <div className="witness-card" key={witness.id}><span>0{index + 1}</span><label>Nom<input value={witness.name} onChange={(event) => updateWitness(witness.id, 'name', event.target.value)} /></label><label>Poste ou rôle<input value={witness.role} onChange={(event) => updateWitness(witness.id, 'role', event.target.value)} /></label><label className="wide">Déclaration<textarea rows={3} value={witness.statement} onChange={(event) => updateWitness(witness.id, 'statement', event.target.value)} /></label><button type="button" disabled={witnesses.length === 1} onClick={() => setWitnesses((current) => current.filter((item) => item.id !== witness.id))}>Retirer</button></div>)}</div>
-            <div className="investigation-form-grid three">
-              <label>Premiers soins donnés par<input value={data.firstAidBy} onChange={(event) => updateData('firstAidBy', event.target.value)} /></label>
-              <label>Soins réalisés<input value={data.firstAid} onChange={(event) => updateData('firstAid', event.target.value)} /></label>
-              <label>Secours extérieurs<input value={data.externalHelp} onChange={(event) => updateData('externalHelp', event.target.value)} /></label>
+            <div className="panel-heading"><div><h3>Formations et compétences</h3><p>Indiquez la date de chaque formation suivie. Un champ laissé vide signifie que la formation n’a pas été suivie — c’est en soi un fait pour l’enquête.</p></div></div>
+            <div className="training-rows">
+              {fixedTrainings.map((name) => <div className="training-row" key={name}>
+                <span>{name}</span>
+                <input type="date" value={data.trainings[name] ?? ''} onChange={(event) => updateData('trainings', { ...data.trainings, [name]: event.target.value })} aria-label={name} />
+              </div>)}
             </div>
+            <div className="investigation-inline-add">
+              <label>Autre formation suivie<input value={extraTrainingName} onChange={(event) => setExtraTrainingName(event.target.value)} placeholder="Ex. PRAP, produits chimiques…" /></label>
+              <label>Date<input type="date" value={extraTrainingDate} onChange={(event) => setExtraTrainingDate(event.target.value)} /></label>
+              <button type="button" onClick={addExtraTraining}>Ajouter</button>
+            </div>
+            {data.extraTrainings.length > 0 && <ul className="investigation-chip-list">
+              {data.extraTrainings.map((item) => <li key={item.id}>
+                <strong>{item.name}</strong>
+                <small>{item.date ? formatDate(item.date) : 'date non renseignée'}</small>
+                <button type="button" onClick={() => updateData('extraTrainings', data.extraTrainings.filter((entry) => entry.id !== item.id))} aria-label={`Retirer ${item.name}`}>Retirer</button>
+              </li>)}
+            </ul>}
+            <label>Précisions (autres compétences, habilitations)<textarea rows={3} value={data.victimTraining} onChange={(event) => updateData('victimTraining', event.target.value)} /></label>
           </div>
           <StageActions step={step} setStep={setStep} />
         </div>}
 
         {step === 3 && <div className="investigation-stage">
-          <div className="investigation-method"><strong>I · T/A · Ma · Mi</strong><p>Individu, tâche ou activité, matériels et milieu : décrivez la situation habituelle pour repérer ensuite ce qui a changé.</p></div>
+          <ItamamiBadge step={step} />
+          <div className="investigation-method"><strong>Le travail réel</strong><p>La fiche de poste dit ce qui devrait être fait. L’enquête cherche ce qui était fait : avec quelles adaptations, quelles urgences et quels arrangements du quotidien.</p></div>
           <div className="investigation-panel">
             <h3>Tâche et activité</h3>
-            <label>Travail réalisé habituellement<textarea rows={6} value={data.usualTask} onChange={(event) => updateData('usualTask', event.target.value)} placeholder="Objectif, étapes, fréquence, coordination, consignes et écarts possibles…" /></label>
-          </div>
-          <div className="investigation-grid two-panels">
-            <div className="investigation-panel"><h3>Matériels</h3><label>Équipements de travail<textarea rows={3} value={data.equipment} onChange={(event) => updateData('equipment', event.target.value)} /></label><label>Produits utilisés<input value={data.products} onChange={(event) => updateData('products', event.target.value)} /></label>{data.products && <label>FDS consultée<select value={data.fdsChecked} onChange={(event) => updateData('fdsChecked', event.target.value)}><option>Oui</option><option>Non</option><option>Non concerné</option></select></label>}<p className="field-title">EPI portés</p><div className="investigation-check-grid">{epiOptions.map((item) => <label key={item} className={data.epis.includes(item) ? 'selected' : ''}><input type="checkbox" checked={data.epis.includes(item)} onChange={() => toggleEpi(item)} />{item}</label>)}</div><label>Autres EPI<input value={data.otherEpi} onChange={(event) => updateData('otherEpi', event.target.value)} /></label><label>Protections collectives<input value={data.collectiveProtection} onChange={(event) => updateData('collectiveProtection', event.target.value)} /></label></div>
-            <div className="investigation-panel"><h3>Milieu</h3><label>Secteur<input value={data.sector} onChange={(event) => updateData('sector', event.target.value)} /></label><label>Sous-secteur ou machine<input value={data.subSector} onChange={(event) => updateData('subSector', event.target.value)} /></label><label>État du sol<input value={data.floorCondition} onChange={(event) => updateData('floorCondition', event.target.value)} /></label><label>Nuisances<textarea rows={3} value={data.nuisances} onChange={(event) => updateData('nuisances', event.target.value)} /></label><div className="investigation-switches"><label><input type="checkbox" checked={data.usualWorkstation} onChange={(event) => updateData('usualWorkstation', event.target.checked)} />Poste habituel</label><label><input type="checkbox" checked={data.cluttered} onChange={(event) => updateData('cluttered', event.target.checked)} />Poste encombré</label><label><input type="checkbox" checked={data.levelDifferences} onChange={(event) => updateData('levelDifferences', event.target.checked)} />Différences de niveau</label><label><input type="checkbox" checked={data.lightingOk} onChange={(event) => updateData('lightingOk', event.target.checked)} />Éclairage satisfaisant</label></div></div>
+            <label>Travail réalisé habituellement lors de la survenue de l’événement<textarea rows={9} value={data.usualTask} onChange={(event) => updateData('usualTask', event.target.value)} placeholder="Objectif, étapes, fréquence, coordination, consignes et écarts possibles…" /></label>
           </div>
           <StageActions step={step} setStep={setStep} />
         </div>}
 
         {step === 4 && <div className="investigation-stage">
-          <div className="investigation-grid two-panels">
-            <div className="investigation-panel"><h3>Conséquences</h3><label>Type<select value={data.consequenceType} onChange={(event) => updateData('consequenceType', event.target.value)}><option>Incident matériel sans blessé</option><option>Accident déclaré sans arrêt</option><option>Accident déclaré avec arrêt</option><option>Incapacité permanente</option><option>Décès</option></select></label><label>Nombre de jours d’arrêt<input inputMode="numeric" value={data.daysOff} onChange={(event) => updateData('daysOff', event.target.value)} /></label><label>Partie du corps atteinte<input value={data.injuryLocation} onChange={(event) => updateData('injuryLocation', event.target.value)} /></label><label>Nature de la lésion<input value={data.injuryNature} onChange={(event) => updateData('injuryNature', event.target.value)} /></label></div>
-            <div className="investigation-panel"><h3>Reconstitution</h3><p className="panel-copy">Écrivez uniquement ce qui peut être observé ou vérifié. Remplacez « il n’a pas fait attention » par une description précise du geste et de la situation.</p><label>Récit chronologique<textarea rows={10} value={data.narrative} onChange={(event) => updateData('narrative', event.target.value)} placeholder="De la situation normale jusqu’aux conséquences…" /></label><label>Fait ultime<textarea rows={3} value={data.harmfulEvent} onChange={(event) => updateData('harmfulEvent', event.target.value)} placeholder="Dernier fait de l’enchaînement : contact, chute, exposition ou mouvement ayant produit le dommage…" /></label></div>
-          </div>
+          <ItamamiBadge step={step} />
           <div className="investigation-panel">
-            <div className="panel-heading"><div><h3>Liste des faits établis</h3><p>Ajoutez les faits à rebours du dommage : causes directes d’abord, puis antécédents.</p></div><button type="button" onClick={() => setFacts((current) => [...current, blankFact()])}>+ Ajouter un fait</button></div>
-            <div className="fact-list">{facts.map((fact, index) => <div className="fact-card" key={fact.id}><div className="fact-card-head"><span>Fait {String(index + 1).padStart(2, '0')}</span><button type="button" disabled={facts.length === 1} onClick={() => removeFact(fact.id)}>Retirer</button></div><label>Description factuelle<textarea rows={3} value={fact.description} onChange={(event) => updateFact(fact.id, 'description', event.target.value)} /></label><div className="investigation-form-grid three"><label>Nature<select value={fact.nature} onChange={(event) => updateFact(fact.id, 'nature', event.target.value as CauseNature)}><option>Humaine</option><option>Organisationnelle</option><option>Technique</option></select></label><label>Statut dans l’arbre<select value={fact.nodeType} onChange={(event) => updateFact(fact.id, 'nodeType', event.target.value as NodeType)}><option>Fait variable</option><option>Fait permanent</option><option>Fait de base</option></select></label><label className="fact-action"><input type="checkbox" checked={fact.actionable} onChange={(event) => updateFact(fact.id, 'actionable', event.target.checked)} />Levier de prévention actionnable</label></div></div>)}</div>
+            <h3>Matériels, produits et protections</h3>
+            <div className="investigation-form-grid two">
+              <label>Équipements de travail<textarea rows={3} value={data.equipment} onChange={(event) => updateData('equipment', event.target.value)} /></label>
+              <label>Matières<textarea rows={3} value={data.materials} onChange={(event) => updateData('materials', event.target.value)} /></label>
+              <label>Produits utilisés<input value={data.products} onChange={(event) => updateData('products', event.target.value)} /></label>
+              {data.products && <label>Fiche de données de sécurité (FDS) consultée<select value={data.fdsChecked} onChange={(event) => updateData('fdsChecked', event.target.value)}><option>Oui</option><option>Non</option><option>Non concerné</option></select></label>}
+            </div>
+            <p className="field-title">Équipements de protection individuelle portés</p>
+            <CheckGrid wide options={epiOptions} selected={data.epis} onToggle={(value) => toggleIn('epis', value)} />
+            <div className="investigation-form-grid two">
+              <label>Autres EPI<input value={data.otherEpi} onChange={(event) => updateData('otherEpi', event.target.value)} /></label>
+              <label>Protections collectives<input value={data.collectiveProtection} onChange={(event) => updateData('collectiveProtection', event.target.value)} placeholder="Garde-corps, capotage, aspiration à la source…" /></label>
+            </div>
           </div>
           <StageActions step={step} setStep={setStep} />
         </div>}
 
         {step === 5 && <div className="investigation-stage">
+          <ItamamiBadge step={step} />
+          <div className="investigation-panel">
+            <h3>Le milieu de travail</h3>
+            <div className="investigation-form-grid three">
+              <label>Secteur<input value={data.sector} onChange={(event) => updateData('sector', event.target.value)} /></label>
+              <label>Sous-secteur ou machine<input value={data.subSector} onChange={(event) => updateData('subSector', event.target.value)} /></label>
+              <label>État du sol<input value={data.floorCondition} onChange={(event) => updateData('floorCondition', event.target.value)} /></label>
+            </div>
+            <div className="investigation-switches">
+              <label><input type="checkbox" checked={data.usualWorkstation} onChange={(event) => updateData('usualWorkstation', event.target.checked)} />Poste de travail habituel de la personne</label>
+              <label><input type="checkbox" checked={data.cluttered} onChange={(event) => updateData('cluttered', event.target.checked)} />Poste encombré</label>
+              <label><input type="checkbox" checked={data.levelDifferences} onChange={(event) => updateData('levelDifferences', event.target.checked)} />Différences de niveau</label>
+              <label><input type="checkbox" checked={data.lightingOk} onChange={(event) => updateData('lightingOk', event.target.checked)} />Éclairage satisfaisant</label>
+            </div>
+            <p className="field-title">Nuisances physiques et chimiques</p>
+            <CheckGrid wide options={nuisanceOptions} selected={data.nuisanceKinds} onToggle={(value) => toggleIn('nuisanceKinds', value)} />
+            <label>Précisions sur les nuisances<textarea rows={3} value={data.nuisances} onChange={(event) => updateData('nuisances', event.target.value)} /></label>
+          </div>
+          <div className="investigation-panel">
+            <h3>Si la personne était en déplacement</h3>
+            <div className="investigation-form-grid three">
+              <label>Lieu de départ<input value={data.tripFrom} onChange={(event) => updateData('tripFrom', event.target.value)} /></label>
+              <label>Lieu d’arrivée<input value={data.tripTo} onChange={(event) => updateData('tripTo', event.target.value)} /></label>
+              <label>Motif du déplacement<input value={data.tripReason} onChange={(event) => updateData('tripReason', event.target.value)} /></label>
+            </div>
+          </div>
+          <StageActions step={step} setStep={setStep} />
+        </div>}
+
+        {step === 6 && <div className="investigation-stage">
+          <div className="investigation-panel">
+            <h3>Conséquences de l’événement</h3>
+            <p className="panel-copy">La gravité qualifie l’atteinte constatée. Elle ne présume ni des causes, ni des responsabilités.</p>
+            <div className="investigation-form-grid three">
+              <label>Type<select value={data.consequenceType} onChange={(event) => updateData('consequenceType', event.target.value)}>{consequenceTypes.map((option) => <option key={option}>{option}</option>)}</select></label>
+              <label>Nombre de jours d’arrêt<input inputMode="numeric" value={data.daysOff} onChange={(event) => updateData('daysOff', event.target.value)} /></label>
+              <label>Siège des lésions<input value={data.injuryLocation} onChange={(event) => updateData('injuryLocation', event.target.value)} placeholder="Ex. main droite, dos, œil gauche…" /></label>
+            </div>
+            <p className="field-title">Nature des lésions</p>
+            <CheckGrid wide options={injuryOptions} selected={data.injuryTypes} onToggle={(value) => toggleIn('injuryTypes', value)} />
+            <label>Précisions sur les lésions<input value={data.injuryNature} onChange={(event) => updateData('injuryNature', event.target.value)} /></label>
+          </div>
+          <StageActions step={step} setStep={setStep} />
+        </div>}
+
+        {step === 7 && <div className="investigation-stage">
+          <div className="investigation-method"><strong>Un fait, pas un jugement</strong><p>« Il était distrait » est une opinion. « Il tenait le carton à deux mains » est un fait : observable, vérifiable, et discutable collectivement.</p></div>
+          <div className="investigation-panel">
+            <h3>Reconstitution</h3>
+            <label>Récit chronologique<textarea rows={9} value={data.narrative} onChange={(event) => updateData('narrative', event.target.value)} placeholder="De la situation normale jusqu’aux conséquences…" /></label>
+            <label>Fait ultime<textarea rows={3} value={data.harmfulEvent} onChange={(event) => updateData('harmfulEvent', event.target.value)} placeholder="Dernier fait de l’enchaînement : contact, chute, exposition ou mouvement ayant produit le dommage…" /></label>
+          </div>
+
+          <div className="investigation-panel">
+            <div className="panel-heading"><div><h3>Témoins</h3><p>Consignez des déclarations factuelles. Distinguez ce qui a été vu, entendu ou rapporté.</p></div><button type="button" onClick={() => setWitnesses((current) => [...current, blankWitness()])}>+ Ajouter un témoin</button></div>
+            <div className="witness-list">{witnesses.map((witness, index) => <div className="witness-card" key={witness.id}><span>0{index + 1}</span><label>Nom<input value={witness.name} onChange={(event) => updateWitness(witness.id, 'name', event.target.value)} /></label><label>Poste ou rôle<input value={witness.role} onChange={(event) => updateWitness(witness.id, 'role', event.target.value)} /></label><label className="wide">Déclaration<textarea rows={3} value={witness.statement} onChange={(event) => updateWitness(witness.id, 'statement', event.target.value)} /></label><button type="button" disabled={witnesses.length === 1} onClick={() => setWitnesses((current) => current.filter((item) => item.id !== witness.id))}>Retirer</button></div>)}</div>
+          </div>
+
+          <div className="investigation-panel">
+            <div className="panel-heading"><div><h3>Liste des faits établis</h3><p>Ajoutez les faits à rebours du dommage : causes directes d’abord, puis antécédents. La nature du fait sert à proposer une première structure d’arbre à l’étape suivante.</p></div><button type="button" onClick={() => setFacts((current) => [...current, blankFact()])}>+ Ajouter un fait</button></div>
+            <div className="fact-list">{facts.map((fact, index) => <div className="fact-card" key={fact.id}><div className="fact-card-head"><span>Fait {String(index + 1).padStart(2, '0')}</span><button type="button" disabled={facts.length === 1} onClick={() => removeFact(fact.id)}>Retirer</button></div><label>Description factuelle<textarea rows={3} value={fact.description} onChange={(event) => updateFact(fact.id, 'description', event.target.value)} /></label><div className="investigation-form-grid three"><label>Nature<select value={fact.nature} onChange={(event) => updateFact(fact.id, 'nature', event.target.value as CauseNature)}><option>Humaine</option><option>Organisationnelle</option><option>Technique</option></select></label><label>Statut dans l’arbre<select value={fact.nodeType} onChange={(event) => updateFact(fact.id, 'nodeType', event.target.value as NodeType)}><option>Fait variable</option><option>Fait permanent</option><option>Fait de base</option></select></label><label className="fact-action"><input type="checkbox" checked={fact.actionable} onChange={(event) => updateFact(fact.id, 'actionable', event.target.checked)} />Levier de prévention actionnable</label></div></div>)}</div>
+          </div>
+          <StageActions step={step} setStep={setStep} />
+        </div>}
+
+        {step === 8 && <div className="investigation-stage">
           <div className="tree-instructions"><div><strong>Construisez l’arbre directement à la souris</strong><p>Déplacez chaque fait sur la gauche. Tirez depuis le point droit d’une cause vers le point gauche du fait qu’elle explique. Sélectionnez une liaison pour la supprimer ou déplacez son extrémité pour la reconnecter.</p></div><span>{usableFacts.length} fait(s) · {graphEdges.length} liaison(s)</span></div>
+          <div className="investigation-proposal">
+            <div><strong>Besoin d’un point de départ ?</strong><p>Une première structure peut être proposée à partir de la nature des faits : une branche par famille — humaine, organisationnelle, technique — remontant au fait ultime. C’est une hypothèse à discuter, pas une conclusion.</p></div>
+            <button type="button" disabled={!usableFacts.length} onClick={proposeStructure}>Proposer une première structure</button>
+          </div>
           <CauseGraphEditor nodes={graphNodes} edges={graphEdges} setNodes={setGraphNodes} setEdges={setGraphEdges} facts={usableFacts} ultimateLabel={data.harmfulEvent} />
-          <div className="report-action-panel investigation-report-panel"><div><p className="eyebrow">Rapport de séance</p><h3>Votre enquête au format PowerPoint</h3><p>Le fichier reprend le cadrage, le travail réel, le récit, les faits, l’arbre des causes et les causes racines à examiner. Tous les éléments restent modifiables dans PowerPoint.</p></div><button className="button" type="button" disabled={isExporting} onClick={downloadPowerPoint}>{isExporting ? 'Préparation du fichier…' : 'Télécharger le rapport .pptx'}</button></div>
+          <div className="report-action-panel investigation-report-panel"><div><p className="eyebrow">Rapport de séance</p><h3>Votre enquête au format PowerPoint</h3><p>Le fichier reprend la méthode, le cadrage, l’individu et ses formations, le travail réel, le récit, les faits, l’arbre des causes, les causes racines et les suites à donner. Tous les éléments restent modifiables dans PowerPoint.</p></div><button className="button" type="button" disabled={isExporting} onClick={downloadPowerPoint}>{isExporting ? 'Préparation du fichier…' : 'Télécharger le rapport .pptx'}</button></div>
           <StageActions step={step} setStep={setStep} />
         </div>}
       </section>
@@ -545,7 +803,24 @@ export default function InvestigationWorkshop() {
 }
 
 function StageActions({ step, setStep }: { step: number; setStep: (step: number) => void }) {
-  return <div className="investigation-stage-actions"><button type="button" className="text-button" disabled={step === 1} onClick={() => setStep(Math.max(1, step - 1))}>← Étape précédente</button>{step < 5 && <button type="button" className="button" onClick={() => setStep(Math.min(5, step + 1))}>Continuer</button>}</div>;
+  return <div className="investigation-stage-actions"><button type="button" className="text-button" disabled={step === 1} onClick={() => setStep(Math.max(1, step - 1))}>← Étape précédente</button>{step < TOTAL_STEPS && <button type="button" className="button" onClick={() => setStep(Math.min(TOTAL_STEPS, step + 1))}>Continuer</button>}</div>;
+}
+
+function ItamamiBadge({ step }: { step: number }) {
+  return <div className="itamami-badge">
+    {itamamiLetters.map((letter) => <span key={letter.code} className={letter.step === step ? 'active' : ''}>
+      <strong>{letter.code}</strong>
+      <small>{letter.label}</small>
+    </span>)}
+  </div>;
+}
+
+function CheckGrid({ options, selected, onToggle, wide }: { options: string[]; selected: string[]; onToggle: (value: string) => void; wide?: boolean }) {
+  return <div className={`investigation-check-grid${wide ? ' wide' : ''}`}>
+    {options.map((option) => <label key={option} className={selected.includes(option) ? 'selected' : ''}>
+      <input type="checkbox" checked={selected.includes(option)} onChange={() => onToggle(option)} />{option}
+    </label>)}
+  </div>;
 }
 
 function CauseFactNode({ id, data, selected }: NodeProps<CauseFlowNode>) {
@@ -656,7 +931,6 @@ function CauseGraphEditor({ nodes, edges, setNodes, setEdges, facts, ultimateLab
         isValidConnection={isValidConnection}
         onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
         onPaneClick={() => setSelectedEdgeId(null)}
-        nodesDeletable={false}
         edgesReconnectable
         deleteKeyCode={['Backspace', 'Delete']}
         connectionRadius={28}
@@ -671,6 +945,6 @@ function CauseGraphEditor({ nodes, edges, setNodes, setEdges, facts, ultimateLab
         <Controls position="bottom-left" showInteractive={false} />
       </ReactFlow>
     </div>
-    <div className="cause-flow-status"><strong>Fait ultime à droite :</strong> {ultimateLabel.trim() || 'à renseigner à l’étape 4'}<span>Les positions et les liaisons sont enregistrées automatiquement.</span></div>
+    <div className="cause-flow-status"><strong>Fait ultime à droite :</strong> {ultimateLabel.trim() || 'à renseigner à l’étape 7'}<span>Les positions et les liaisons sont enregistrées automatiquement.</span></div>
   </section>;
 }
